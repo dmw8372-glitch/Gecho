@@ -1,0 +1,359 @@
+export type GameScreen = 'title' | 'playing' | 'paused' | 'gameover';
+
+export type WeedingGrade = 1 | 2 | 3 | 4 | 5;
+
+export type CharacterId = 'chiikawa' | 'hachiware' | 'usagi';
+
+export interface PlantDefinition {
+  id: string;
+  label: string;
+  isWeed: boolean;
+  sprite: string;
+  worldWidth: number;
+  worldHeight: number;
+}
+
+export const EXAM_DURATION_SECONDS = 15;
+
+export const YARD_BOUNDS = {
+  minX: -5.2,
+  maxX: 5.2,
+  minZ: -2.65,
+  maxZ: 3.35,
+};
+
+export const PLANT_CATALOG: PlantDefinition[] = [
+  // Weeds (+1)
+  {
+    id: 'weed_toothed_buds_lg',
+    label: '톱니잎 잡초',
+    isWeed: true,
+    sprite: '/assets/sprites/weed_buds_lg.png',
+    worldWidth: 1.55,
+    worldHeight: 1.25,
+  },
+  {
+    id: 'weed_toothed_buds_sm',
+    label: '톱니잎 잡초',
+    isWeed: true,
+    sprite: '/assets/sprites/weed_buds_sm.png',
+    worldWidth: 1.25,
+    worldHeight: 1.15,
+  },
+  {
+    id: 'weed_toothed_1',
+    label: '톱니잎 잡초',
+    isWeed: true,
+    sprite: '/assets/sprites/weed_toothed_1.png',
+    worldWidth: 1.3,
+    worldHeight: 1.05,
+  },
+  {
+    id: 'weed_toothed_2',
+    label: '톱니잎 잡초',
+    isWeed: true,
+    sprite: '/assets/sprites/weed_toothed_2.png',
+    worldWidth: 1.5,
+    worldHeight: 1.2,
+  },
+  {
+    id: 'weed_clump',
+    label: '뭉치 잡초',
+    isWeed: true,
+    sprite: '/assets/sprites/weed_clump.png',
+    worldWidth: 1.25,
+    worldHeight: 0.92,
+  },
+  {
+    id: 'weed_clump_sm',
+    label: '뭉치 잡초',
+    isWeed: true,
+    sprite: '/assets/sprites/weed_clump_sm.png',
+    worldWidth: 1.1,
+    worldHeight: 0.82,
+  },
+  {
+    id: 'weed_long_lg',
+    label: '길쭉 잡초',
+    isWeed: true,
+    sprite: '/assets/sprites/weed_long_lg.png',
+    worldWidth: 1.5,
+    worldHeight: 1.18,
+  },
+  {
+    id: 'weed_long_s1',
+    label: '길쭉 잡초',
+    isWeed: true,
+    sprite: '/assets/sprites/weed_long_s1.png',
+    worldWidth: 1.65,
+    worldHeight: 1.15,
+  },
+  // Protected plants (-1)
+  {
+    id: 'flower_yellow',
+    label: '노란술 꽃',
+    isWeed: false,
+    sprite: '/assets/sprites/flower_yellow.png',
+    worldWidth: 0.98,
+    worldHeight: 1.48,
+  },
+  {
+    id: 'flower_white',
+    label: '하얀 꽃',
+    isWeed: false,
+    sprite: '/assets/sprites/flower_white.png',
+    worldWidth: 0.95,
+    worldHeight: 1.42,
+  },
+  {
+    id: 'flower_cluster',
+    label: '꽃무더기',
+    isWeed: false,
+    sprite: '/assets/sprites/flower_cluster.png',
+    worldWidth: 1.38,
+    worldHeight: 1.42,
+  },
+  {
+    id: 'veg_cabbage',
+    label: '양배추',
+    isWeed: false,
+    sprite: '/assets/sprites/veg_cabbage.png',
+    worldWidth: 1.38,
+    worldHeight: 1.15,
+  },
+  {
+    id: 'veg_carrot',
+    label: '당근',
+    isWeed: false,
+    sprite: '/assets/sprites/plant_carrot_s2.png',
+    worldWidth: 1.15,
+    worldHeight: 1.38,
+  },
+  {
+    id: 'veg_strawberry',
+    label: '딸기',
+    isWeed: false,
+    sprite: '/assets/sprites/plant_clover.png',
+    worldWidth: 1.18,
+    worldHeight: 0.96,
+  },
+];
+
+export const STUDY_WEED_ITEMS = [
+  { label: '톱니잎 잡초', sprite: '/assets/sprites/weed_buds_lg.png' },
+  { label: '뭉치 잡초', sprite: '/assets/sprites/weed_clump.png' },
+  { label: '길쭉 잡초', sprite: '/assets/sprites/weed_long_lg.png' },
+];
+
+export const STUDY_PROTECTED_ITEMS = [
+  { label: '노란술 꽃', sprite: '/assets/sprites/flower_yellow.png' },
+  { label: '꽃무더기', sprite: '/assets/sprites/flower_cluster.png' },
+  { label: '양배추', sprite: '/assets/sprites/veg_cabbage.png' },
+  { label: '하얀 꽃', sprite: '/assets/sprites/flower_white.png' },
+  { label: '당근', sprite: '/assets/sprites/plant_carrot_s2.png' },
+  { label: '딸기', sprite: '/assets/sprites/plant_clover.png' },
+];
+
+export const GRADE_CERTIFICATES: Record<
+  WeedingGrade,
+  {
+    grade: WeedingGrade;
+    label: string;
+    sprite: string;
+    minScore: number;
+    shimmerTier: 'rainbow' | 'silver' | 'bronze' | 'mint' | 'basic';
+  }
+> = {
+  1: {
+    grade: 1,
+    label: '1급',
+    sprite: '/assets/sprites/cert_1.png',
+    minScore: 25,
+    shimmerTier: 'rainbow',
+  },
+  2: {
+    grade: 2,
+    label: '2급',
+    sprite: '/assets/sprites/cert_2.png',
+    minScore: 18,
+    shimmerTier: 'silver',
+  },
+  3: {
+    grade: 3,
+    label: '3급',
+    sprite: '/assets/sprites/cert_3.png',
+    minScore: 10,
+    shimmerTier: 'bronze',
+  },
+  4: {
+    grade: 4,
+    label: '4급',
+    sprite: '/assets/sprites/cert_4.png',
+    minScore: 5,
+    shimmerTier: 'mint',
+  },
+  5: {
+    grade: 5,
+    label: '5급',
+    sprite: '/assets/sprites/cert_5.png',
+    minScore: 0,
+    shimmerTier: 'basic',
+  },
+};
+
+export const CHARACTER_PORTRAITS: Record<
+  CharacterId,
+  { id: CharacterId; name: string; sprite: string }
+> = {
+  chiikawa: {
+    id: 'chiikawa',
+    name: '치이카와',
+    sprite: '/assets/sprites/chiikawa_s2.png',
+  },
+  hachiware: {
+    id: 'hachiware',
+    name: '하치와레',
+    sprite: '/assets/sprites/hachiware_s2.png',
+  },
+  usagi: {
+    id: 'usagi',
+    name: '우사기',
+    sprite: '/assets/sprites/usagi_s2.png',
+  },
+};
+
+export interface ExamStats {
+  score: number;
+  combo: number;
+  maxCombo: number;
+  mistakes: number;
+  pulledWeeds: number;
+}
+
+export function createInitialExamStats(): ExamStats {
+  return {
+    score: 0,
+    combo: 0,
+    maxCombo: 0,
+    mistakes: 0,
+    pulledWeeds: 0,
+  };
+}
+
+export function computeGrade(score: number): WeedingGrade {
+  if (score >= GRADE_CERTIFICATES[1].minScore) return 1;
+  if (score >= GRADE_CERTIFICATES[2].minScore) return 2;
+  if (score >= GRADE_CERTIFICATES[3].minScore) return 3;
+  if (score >= GRADE_CERTIFICATES[4].minScore) return 4;
+  return 5;
+}
+
+export function applyPlantPull(stats: ExamStats, isWeed: boolean): {
+  next: ExamStats;
+  delta: number;
+  gradeChanged: boolean;
+  previousGrade: WeedingGrade;
+  nextGrade: WeedingGrade;
+} {
+  const previousGrade = computeGrade(stats.score);
+  if (isWeed) {
+    const nextScore = stats.score + 1;
+    const nextCombo = stats.combo + 1;
+    const nextMaxCombo = Math.max(stats.maxCombo, nextCombo);
+    const nextGrade = computeGrade(nextScore);
+    return {
+      next: {
+        score: nextScore,
+        combo: nextCombo,
+        maxCombo: nextMaxCombo,
+        mistakes: stats.mistakes,
+        pulledWeeds: stats.pulledWeeds + 1,
+      },
+      delta: 1,
+      gradeChanged: nextGrade < previousGrade,
+      previousGrade,
+      nextGrade,
+    };
+  }
+
+  const nextScore = Math.max(0, stats.score - 1);
+  const nextGrade = computeGrade(nextScore);
+  return {
+    next: {
+      score: nextScore,
+      combo: 0,
+      maxCombo: stats.maxCombo,
+      mistakes: stats.mistakes + 1,
+      pulledWeeds: stats.pulledWeeds,
+    },
+    delta: -1,
+    gradeChanged: false,
+    previousGrade,
+    nextGrade,
+  };
+}
+
+export function getTargetPlantBudget(elapsedSeconds: number): {
+  targetCount: number;
+  weedProbability: number;
+} {
+  const ratio = Math.max(0, Math.min(1, elapsedSeconds / EXAM_DURATION_SECONDS));
+  const targetCount = Math.round(7 + ratio * 5); // 7 -> 12 active plants
+  const weedProbability = 0.74 - ratio * 0.08; // 74% -> 66% weeds
+  return { targetCount, weedProbability };
+}
+
+export function pickRandomPlant(
+  weedProbability: number,
+  rng: () => number = Math.random,
+): PlantDefinition {
+  const weeds = PLANT_CATALOG.filter((p) => p.isWeed);
+  const protectedPlants = PLANT_CATALOG.filter((p) => !p.isWeed);
+  const pool = rng() < weedProbability ? weeds : protectedPlants;
+  const idx = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
+  return pool[idx];
+}
+
+export function findOpenSpawnPosition(
+  existing: Array<{ x: number; z: number }>,
+  bounds = YARD_BOUNDS,
+  minSpacing = 1.45,
+  rng: () => number = Math.random,
+): { x: number; z: number } | null {
+  let bestCandidate: { x: number; z: number } | null = null;
+  let bestMinDist = -1;
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const x = bounds.minX + rng() * (bounds.maxX - bounds.minX);
+    const z = bounds.minZ + rng() * (bounds.maxZ - bounds.minZ);
+
+    let closestSq = Infinity;
+    for (let i = 0; i < existing.length; i++) {
+      const dx = existing[i].x - x;
+      const dz = existing[i].z - z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < closestSq) closestSq = dSq;
+    }
+
+    if (closestSq >= minSpacing * minSpacing) {
+      return { x, z };
+    }
+    if (closestSq > bestMinDist) {
+      bestMinDist = closestSq;
+      bestCandidate = { x, z };
+    }
+  }
+
+  return bestMinDist > 0.65 * 0.65 ? bestCandidate : null;
+}
+
+export function getTimerDisplay(remainingSeconds: number): {
+  displaySeconds: number;
+  progress: number;
+} {
+  const clamped = Math.max(0, Math.min(EXAM_DURATION_SECONDS, remainingSeconds));
+  return {
+    displaySeconds: Math.ceil(clamped),
+    progress: clamped / EXAM_DURATION_SECONDS,
+  };
+}
