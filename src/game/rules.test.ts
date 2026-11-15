@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EXAM_DURATION_SECONDS,
+  GRADE_CERTIFICATES,
   PLANT_CATALOG,
   RANKING_DURATION_SECONDS,
   YARD_BOUNDS,
@@ -9,6 +10,7 @@ import {
   computeGrade,
   createInitialExamStats,
   findOpenSpawnPosition,
+  getMinimumCumulativeWeeds,
   getModeDuration,
   getTargetPlantBudget,
   getTimerDisplay,
@@ -105,11 +107,11 @@ test('findOpenSpawnPosition avoids collisions and stays within yard bounds', () 
   assert.ok(pos.z >= YARD_BOUNDS.minZ && pos.z <= YARD_BOUNDS.maxZ);
   for (const item of existing) {
     const dist = Math.hypot(item.x - pos.x, item.z - pos.z);
-    assert.ok(dist >= 0.65);
+    assert.ok(dist >= 0.52);
   }
 });
 
-test('getTimerDisplay, getModeDuration, and getTargetPlantBudget stay bounded for 15s and 30s modes', () => {
+test('getTimerDisplay, getModeDuration, and weed budgets exceed 1급 requirement', () => {
   assert.equal(getModeDuration('exam'), EXAM_DURATION_SECONDS);
   assert.equal(getModeDuration('ranking'), RANKING_DURATION_SECONDS);
 
@@ -120,8 +122,14 @@ test('getTimerDisplay, getModeDuration, and getTargetPlantBudget stay bounded fo
 
   const startBudget = getTargetPlantBudget(0, EXAM_DURATION_SECONDS);
   const rankingEndBudget = getTargetPlantBudget(30, RANKING_DURATION_SECONDS);
-  assert.equal(startBudget.targetCount, 7);
-  assert.equal(rankingEndBudget.targetCount, 13);
+  assert.equal(startBudget.targetCount, 10);
+  assert.equal(startBudget.minActiveWeeds, 8);
+  assert.equal(rankingEndBudget.targetCount, 16);
+
+  const examTotalWeeds = getMinimumCumulativeWeeds(EXAM_DURATION_SECONDS, EXAM_DURATION_SECONDS);
+  const rankingTotalWeeds = getMinimumCumulativeWeeds(RANKING_DURATION_SECONDS, RANKING_DURATION_SECONDS);
+  assert.ok(examTotalWeeds >= GRADE_CERTIFICATES[1].minScore + 15);
+  assert.ok(rankingTotalWeeds >= 75);
 });
 
 test('sanitizePlayerName and sortRankingRecords behave deterministically', () => {

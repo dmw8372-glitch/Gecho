@@ -281,14 +281,27 @@ export function getTargetPlantBudget(
   durationSeconds = EXAM_DURATION_SECONDS,
 ): {
   targetCount: number;
+  minActiveWeeds: number;
+  maxProtectedActive: number;
   weedProbability: number;
 } {
   const safeDuration = Math.max(1, durationSeconds);
   const ratio = Math.max(0, Math.min(1, elapsedSeconds / safeDuration));
-  const maxActive = durationSeconds >= RANKING_DURATION_SECONDS ? 13 : 12;
-  const targetCount = Math.round(7 + ratio * (maxActive - 7));
-  const weedProbability = 0.74 - ratio * 0.08;
-  return { targetCount, weedProbability };
+  const maxActive = durationSeconds >= RANKING_DURATION_SECONDS ? 16 : 14;
+  const targetCount = Math.round(10 + ratio * (maxActive - 10));
+  const minActiveWeeds = Math.min(10, Math.round(8 + ratio * 2));
+  const maxProtectedActive = 4;
+  const weedProbability = 0.78 - ratio * 0.06;
+  return { targetCount, minActiveWeeds, maxProtectedActive, weedProbability };
+}
+
+export function getMinimumCumulativeWeeds(
+  elapsedSeconds: number,
+  durationSeconds = EXAM_DURATION_SECONDS,
+): number {
+  const clampedElapsed = Math.max(0, Math.min(durationSeconds, elapsedSeconds));
+  const weedsPerSecond = durationSeconds >= RANKING_DURATION_SECONDS ? 2.6 : 2.5;
+  return 8 + Math.floor(clampedElapsed * weedsPerSecond);
 }
 
 export function pickRandomPlant(
@@ -311,7 +324,7 @@ export function findOpenSpawnPosition(
   let bestCandidate: { x: number; z: number } | null = null;
   let bestMinDist = -1;
 
-  for (let attempt = 0; attempt < 24; attempt++) {
+  for (let attempt = 0; attempt < 28; attempt++) {
     const x = bounds.minX + rng() * (bounds.maxX - bounds.minX);
     const z = bounds.minZ + rng() * (bounds.maxZ - bounds.minZ);
 
@@ -332,7 +345,7 @@ export function findOpenSpawnPosition(
     }
   }
 
-  return bestMinDist > 0.65 * 0.65 ? bestCandidate : null;
+  return bestMinDist > 0.52 * 0.52 ? bestCandidate : null;
 }
 
 export function getTimerDisplay(

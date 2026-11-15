@@ -72,25 +72,25 @@
   box-shadow: 0 2px 0 rgba(52, 47, 42, 0.16);
 }
 
-/* Certificate sweeping white light shine: travels completely across left->right and disappears cleanly */
+/* Certificate sweeping white light shine: moves smoothly left->right across card width and vanishes off-right */
 @keyframes certLightSweep {
   0% {
-    transform: translateX(-180%) skewX(-22deg);
+    left: -42%;
     opacity: 0;
   }
-  7% {
-    opacity: 0.98;
+  8% {
+    opacity: 0.96;
   }
-  44% {
-    opacity: 0.98;
+  40% {
+    opacity: 0.96;
   }
-  50% {
-    transform: translateX(520%) skewX(-22deg);
+  48% {
+    left: 128%;
     opacity: 0;
   }
-  51%,
+  49%,
   100% {
-    transform: translateX(520%) skewX(-22deg);
+    left: 128%;
     opacity: 0;
   }
 }
@@ -137,6 +137,10 @@
 }
 
 .cert-shine-beam {
+  left: -42%;
+  opacity: 0;
+  transform: skewX(-22deg) translateZ(0);
+  will-change: left, opacity;
   animation: certLightSweep 2.6s cubic-bezier(0.32, 0, 0.24, 1) infinite;
 }
 
@@ -153,7 +157,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cert-shine-beam,
+  .cert-shine-beam {
+    animation: none;
+    display: none;
+    opacity: 0;
+  }
   .cert-sparkle,
   .cert-float {
     animation: none;

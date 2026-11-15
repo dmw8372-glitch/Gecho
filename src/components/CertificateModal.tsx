@@ -296,24 +296,16 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             </div>
           )}
 
-          {/* Sweeping white light glare: travels left->right across card silhouette and exits cleanly */}
+          {/* Sweeping white light glare: travels left->right inside black outline and vanishes cleanly */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 overflow-hidden"
-            style={{
-              WebkitMaskImage: `url(${cert.sprite})`,
-              maskImage: `url(${cert.sprite})`,
-              WebkitMaskSize: '100% 100%',
-              maskSize: '100% 100%',
-              WebkitMaskRepeat: 'no-repeat',
-              maskRepeat: 'no-repeat',
-            }}
+            className="pointer-events-none absolute inset-[5%_4.5%_6%_4.5%] overflow-hidden rounded-[22%/32%]"
           >
             <div
-              className="cert-shine-beam absolute -inset-y-8 left-0 w-[28%]"
+              className="cert-shine-beam absolute -inset-y-8 w-[24%]"
               style={{
                 background:
-                  'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.28) 25%, rgba(255,255,255,0.92) 50%, rgba(255,255,255,0.28) 75%, rgba(255,255,255,0) 100%)',
+                  'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.34) 24%, rgba(255,255,255,0.96) 50%, rgba(255,255,255,0.34) 76%, rgba(255,255,255,0) 100%)',
               }}
             />
           </div>
