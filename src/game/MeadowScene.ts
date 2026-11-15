@@ -1219,7 +1219,7 @@ export class MeadowScene {
     if (plant.def.isWeed) {
       this.spawnDirtHole(plant.x, plant.z);
       this.emitParticles(plant.x, plant.z, true);
-      this.spawnCooldown = Math.min(this.spawnCooldown, 0.04);
+      this.spawnCooldown = Math.min(this.spawnCooldown, 0.02);
       for (const ch of this.characters) {
         ch.happyTimer = 0.42;
         ch.panicTimer = 0;
@@ -1319,7 +1319,7 @@ export class MeadowScene {
               def.isWeed ? 10.5 : 4.0 + Math.random() * 1.1,
             );
           }
-          this.spawnCooldown = needWeed ? 0.055 : 0.1;
+          this.spawnCooldown = needWeed ? 0.025 : 0.08;
         }
       }
     }

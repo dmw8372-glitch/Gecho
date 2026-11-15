@@ -9,46 +9,49 @@ import {
   applyPlantPull,
   computeGrade,
   createInitialExamStats,
+  deduplicateBestRankings,
   findOpenSpawnPosition,
   getMinimumCumulativeWeeds,
   getModeDuration,
   getTargetPlantBudget,
   getTimerDisplay,
+  isBetterRankingResult,
   pickRandomPlant,
   sanitizePlayerName,
   sortRankingRecords,
+  toPlayerRankingDocId,
 } from './rules';
 
-test('computeGrade matches reference screenshot score thresholds', () => {
+test('computeGrade matches 60+ threshold for 1급', () => {
   assert.equal(computeGrade(0), 5);
-  assert.equal(computeGrade(4), 5);
-  assert.equal(computeGrade(5), 4);
-  assert.equal(computeGrade(9), 4);
-  assert.equal(computeGrade(10), 3);
-  assert.equal(computeGrade(17), 3);
-  assert.equal(computeGrade(18), 2);
-  assert.equal(computeGrade(24), 2);
-  assert.equal(computeGrade(25), 1);
-  assert.equal(computeGrade(42), 1);
+  assert.equal(computeGrade(7), 5);
+  assert.equal(computeGrade(8), 4);
+  assert.equal(computeGrade(19), 4);
+  assert.equal(computeGrade(20), 3);
+  assert.equal(computeGrade(37), 3);
+  assert.equal(computeGrade(38), 2);
+  assert.equal(computeGrade(59), 2);
+  assert.equal(computeGrade(60), 1);
+  assert.equal(computeGrade(85), 1);
 });
 
 test('applyPlantPull increments score, combo, maxCombo and detects grade-up on weed pull', () => {
   let stats = createInitialExamStats();
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 7; i++) {
     const res = applyPlantPull(stats, true);
     stats = res.next;
     assert.equal(res.gradeChanged, false);
   }
-  assert.equal(stats.score, 4);
-  assert.equal(stats.combo, 4);
+  assert.equal(stats.score, 7);
+  assert.equal(stats.combo, 7);
 
   const gradeUp = applyPlantPull(stats, true);
-  assert.equal(gradeUp.next.score, 5);
+  assert.equal(gradeUp.next.score, 8);
   assert.equal(gradeUp.previousGrade, 5);
   assert.equal(gradeUp.nextGrade, 4);
   assert.equal(gradeUp.gradeChanged, true);
-  assert.equal(gradeUp.next.maxCombo, 5);
-  assert.equal(gradeUp.next.pulledWeeds, 5);
+  assert.equal(gradeUp.next.maxCombo, 8);
+  assert.equal(gradeUp.next.pulledWeeds, 8);
 });
 
 test('applyPlantPull resets combo, increments mistakes, and floors score at 0 for protected plants', () => {
@@ -130,8 +133,8 @@ test('getTimerDisplay, getModeDuration, and weed budgets exceed 1급 requirement
 
   const examTotalWeeds = getMinimumCumulativeWeeds(EXAM_DURATION_SECONDS, EXAM_DURATION_SECONDS);
   const rankingTotalWeeds = getMinimumCumulativeWeeds(RANKING_DURATION_SECONDS, RANKING_DURATION_SECONDS);
-  assert.ok(examTotalWeeds >= GRADE_CERTIFICATES[1].minScore + 15);
-  assert.ok(rankingTotalWeeds >= 75);
+  assert.ok(examTotalWeeds >= GRADE_CERTIFICATES[1].minScore + 10);
+  assert.ok(rankingTotalWeeds >= 130);
 });
 
 test('sanitizePlayerName and sortRankingRecords behave deterministically', () => {
@@ -177,5 +180,65 @@ test('sanitizePlayerName and sortRankingRecords behave deterministically', () =>
   assert.deepEqual(
     sorted.map((r) => r.id),
     ['b', 'c', 'a'],
+  );
+
+  // Deterministic ASCII doc ID and same-name highest-record deduplication
+  const docId1 = toPlayerRankingDocId('치이카와');
+  const docId2 = toPlayerRankingDocId('  치이카와  ');
+  assert.equal(docId1, docId2);
+  assert.match(docId1, /^[a-zA-Z0-9_-]+$/);
+  assert.notEqual(docId1, toPlayerRankingDocId('하치와레'));
+
+  assert.equal(
+    isBetterRankingResult({ score: 35, pulledWeeds: 35, mistakes: 0 }, { score: 25, pulledWeeds: 25, mistakes: 0 }),
+    true,
+  );
+  assert.equal(
+    isBetterRankingResult({ score: 20, pulledWeeds: 20, mistakes: 0 }, { score: 25, pulledWeeds: 25, mistakes: 0 }),
+    false,
+  );
+
+  const deduped = deduplicateBestRankings([
+    {
+      id: 'low',
+      playerName: '치이카와',
+      score: 18,
+      pulledWeeds: 19,
+      maxCombo: 6,
+      mistakes: 1,
+      durationSeconds: 30,
+      portraitId: 'chiikawa',
+      createdAtMs: 1000,
+    },
+    {
+      id: 'high',
+      playerName: '치이카와',
+      score: 36,
+      pulledWeeds: 36,
+      maxCombo: 20,
+      mistakes: 0,
+      durationSeconds: 30,
+      portraitId: 'hachiware',
+      createdAtMs: 2000,
+    },
+    {
+      id: 'other',
+      playerName: '우사기',
+      score: 28,
+      pulledWeeds: 28,
+      maxCombo: 11,
+      mistakes: 0,
+      durationSeconds: 30,
+      portraitId: 'usagi',
+      createdAtMs: 1500,
+    },
+  ]);
+
+  assert.deepEqual(
+    deduped.map((r) => ({ id: r.id, score: r.score })),
+    [
+      { id: 'high', score: 36 },
+      { id: 'other', score: 28 },
+    ],
   );
 });

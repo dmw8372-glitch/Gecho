@@ -15,6 +15,20 @@ service cloud.firestore {
       return request.resource.data;
     }
 
+    function existing() {
+      return resource.data;
+    }
+
+    function isBetterRankingUpdate(nextData, prevData) {
+      return nextData.score > prevData.score
+        || (nextData.score == prevData.score && nextData.pulledWeeds > prevData.pulledWeeds)
+        || (
+          nextData.score == prevData.score
+          && nextData.pulledWeeds == prevData.pulledWeeds
+          && nextData.mistakes < prevData.mistakes
+        );
+    }
+
     function isValidRankingEntry(data) {
       return data.keys().hasAll([
           'playerName',
@@ -60,12 +74,27 @@ service cloud.firestore {
         && (!('uid' in data) || (request.auth != null && data.uid is string && data.uid == request.auth.uid));
     }
 
-    // 30-second weeding challenge leaderboard (non-PII public game scores)
+    // 30-second weeding challenge leaderboard (non-PII public game scores; same-name updates only allowed for higher records)
     match /rankings/{entryId} {
-      allow get: if isValidId(entryId) && resource.data.score >= 0 && resource.data.score <= 300;
+      allow get: if isValidId(entryId)
+        && (resource == null || (resource.data.score >= 0 && resource.data.score <= 300));
       allow list: if resource.data.score >= 0 && resource.data.score <= 300;
       allow create: if isValidId(entryId) && isValidRankingEntry(incoming());
-      allow update, delete: if false;
+      allow update: if isValidId(entryId)
+        && isValidRankingEntry(incoming())
+        && incoming().playerName == existing().playerName
+        && incoming().durationSeconds == existing().durationSeconds
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'score',
+          'pulledWeeds',
+          'maxCombo',
+          'mistakes',
+          'portraitId',
+          'createdAt',
+          'uid'
+        ])
+        && isBetterRankingUpdate(incoming(), existing());
+      allow delete: if false;
     }
   }
 }

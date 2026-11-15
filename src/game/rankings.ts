@@ -1,12 +1,14 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { OperationType, auth, db, handleFirestoreError } from '../firebase';
@@ -15,8 +17,10 @@ import {
   PortraitChoice,
   RANKING_DURATION_SECONDS,
   RankingRecord,
+  deduplicateBestRankings,
+  isBetterRankingResult,
   sanitizePlayerName,
-  sortRankingRecords,
+  toPlayerRankingDocId,
 } from './rules';
 
 const RANKINGS_COLLECTION = 'rankings';
@@ -35,16 +39,30 @@ function readLocalCache(): RankingRecord[] {
 
 function writeLocalCache(records: RankingRecord[]) {
   try {
-    window.localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(sortRankingRecords(records).slice(0, 30)));
+    window.localStorage.setItem(
+      LOCAL_CACHE_KEY,
+      JSON.stringify(deduplicateBestRankings(records).slice(0, 30)),
+    );
   } catch {
     // Ignore storage quota errors
   }
 }
 
-function createEntryId(): string {
-  const ts = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `rk_${ts}_${rand}`;
+function docToRankingRecord(id: string, data: Record<string, unknown>): RankingRecord {
+  const ts = data.createdAt as { toMillis?: () => number } | undefined;
+  const createdAtMs =
+    ts && typeof ts.toMillis === 'function' ? ts.toMillis() : Date.now();
+  return {
+    id,
+    playerName: String(data.playerName || '이름없음'),
+    score: Number(data.score ?? 0),
+    pulledWeeds: Number(data.pulledWeeds ?? 0),
+    maxCombo: Number(data.maxCombo ?? 0),
+    mistakes: Number(data.mistakes ?? 0),
+    durationSeconds: Number(data.durationSeconds ?? RANKING_DURATION_SECONDS),
+    portraitId: (data.portraitId as PortraitChoice) || 'chiikawa',
+    createdAtMs,
+  };
 }
 
 export async function fetchTopRankings(maxResults = 20): Promise<{
@@ -57,39 +75,25 @@ export async function fetchTopRankings(maxResults = 20): Promise<{
       where('score', '>=', 0),
       where('score', '<=', 300),
       orderBy('score', 'desc'),
-      limit(Math.min(50, Math.max(10, maxResults + 10))),
+      limit(Math.min(80, Math.max(25, maxResults + 30))),
     );
     const snap = await getDocs(q);
     const loaded: RankingRecord[] = snap.docs
-      .map((d) => {
-        const data = d.data();
-        const createdAtMs =
-          data.createdAt && typeof data.createdAt.toMillis === 'function'
-            ? data.createdAt.toMillis()
-            : Date.now();
-        return {
-          id: d.id,
-          playerName: String(data.playerName || '이름없음'),
-          score: Number(data.score ?? 0),
-          pulledWeeds: Number(data.pulledWeeds ?? 0),
-          maxCombo: Number(data.maxCombo ?? 0),
-          mistakes: Number(data.mistakes ?? 0),
-          durationSeconds: Number(data.durationSeconds ?? RANKING_DURATION_SECONDS),
-          portraitId: (data.portraitId as PortraitChoice) || 'chiikawa',
-          createdAtMs,
-        };
-      })
+      .map((d) => docToRankingRecord(d.id, d.data() as Record<string, unknown>))
       .filter((r) => r.durationSeconds === RANKING_DURATION_SECONDS);
 
-    const sorted = sortRankingRecords(loaded).slice(0, maxResults);
-    writeLocalCache(sorted);
-    return { records: sorted, source: 'firestore' };
+    const bestUnique = deduplicateBestRankings(loaded).slice(0, maxResults);
+    writeLocalCache(bestUnique);
+    return { records: bestUnique, source: 'firestore' };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     if (msg.includes('Missing or insufficient permissions')) {
       handleFirestoreError(error, OperationType.LIST, RANKINGS_COLLECTION);
     }
-    return { records: sortRankingRecords(readLocalCache()).slice(0, maxResults), source: 'local' };
+    return {
+      records: deduplicateBestRankings(readLocalCache()).slice(0, maxResults),
+      source: 'local',
+    };
   }
 }
 
@@ -101,13 +105,13 @@ export async function submitRankingEntry(params: {
   const cleanName = sanitizePlayerName(params.playerName) || '도전자';
   const clampInt = (n: number) => Math.max(0, Math.min(300, Math.round(n)));
 
-  const entryId = createEntryId();
+  const entryId = toPlayerRankingDocId(cleanName);
   const safeScore = clampInt(params.stats.score);
   const safePulled = clampInt(params.stats.pulledWeeds);
   const safeMaxCombo = clampInt(params.stats.maxCombo);
   const safeMistakes = clampInt(params.stats.mistakes);
 
-  const localRecord: RankingRecord = {
+  const candidateRecord: RankingRecord = {
     id: entryId,
     playerName: cleanName,
     score: safeScore,
@@ -119,7 +123,63 @@ export async function submitRankingEntry(params: {
     createdAtMs: Date.now(),
   };
 
-  const payload: Record<string, unknown> = {
+  const docPath = `${RANKINGS_COLLECTION}/${entryId}`;
+  const docRef = doc(db, RANKINGS_COLLECTION, entryId);
+
+  let existingSnap;
+  try {
+    existingSnap = await getDoc(docRef);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('Missing or insufficient permissions')) {
+      handleFirestoreError(error, OperationType.GET, docPath);
+    }
+    const merged = deduplicateBestRankings([candidateRecord, ...readLocalCache()]);
+    writeLocalCache(merged);
+    return merged.find((r) => r.playerName === cleanName) || candidateRecord;
+  }
+
+  if (existingSnap.exists()) {
+    const existingRecord = docToRankingRecord(
+      existingSnap.id,
+      existingSnap.data() as Record<string, unknown>,
+    );
+    if (!isBetterRankingResult(candidateRecord, existingRecord)) {
+      const merged = deduplicateBestRankings([existingRecord, ...readLocalCache()]);
+      writeLocalCache(merged);
+      return existingRecord;
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      score: safeScore,
+      pulledWeeds: safePulled,
+      maxCombo: safeMaxCombo,
+      mistakes: safeMistakes,
+      portraitId: params.portraitId,
+      createdAt: serverTimestamp(),
+    };
+    if (auth.currentUser?.uid) {
+      updatePayload.uid = auth.currentUser.uid;
+    }
+
+    try {
+      await updateDoc(docRef, updatePayload);
+      const merged = deduplicateBestRankings([candidateRecord, ...readLocalCache()]);
+      writeLocalCache(merged);
+      return candidateRecord;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes('Missing or insufficient permissions')) {
+        handleFirestoreError(error, OperationType.UPDATE, docPath);
+      }
+      const merged = deduplicateBestRankings([candidateRecord, ...readLocalCache()]);
+      writeLocalCache(merged);
+      return candidateRecord;
+    }
+  }
+
+  // Creating new document for this playerName
+  const createPayload: Record<string, unknown> = {
     playerName: cleanName,
     score: safeScore,
     pulledWeeds: safePulled,
@@ -129,21 +189,22 @@ export async function submitRankingEntry(params: {
     portraitId: params.portraitId,
     createdAt: serverTimestamp(),
   };
-
   if (auth.currentUser?.uid) {
-    payload.uid = auth.currentUser.uid;
+    createPayload.uid = auth.currentUser.uid;
   }
 
   try {
-    await setDoc(doc(db, RANKINGS_COLLECTION, entryId), payload);
-    writeLocalCache([localRecord, ...readLocalCache()]);
-    return localRecord;
+    await setDoc(docRef, createPayload);
+    const merged = deduplicateBestRankings([candidateRecord, ...readLocalCache()]);
+    writeLocalCache(merged);
+    return candidateRecord;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     if (msg.includes('Missing or insufficient permissions')) {
-      handleFirestoreError(error, OperationType.CREATE, `${RANKINGS_COLLECTION}/${entryId}`);
+      handleFirestoreError(error, OperationType.CREATE, docPath);
     }
-    writeLocalCache([localRecord, ...readLocalCache()]);
-    return localRecord;
+    const merged = deduplicateBestRankings([candidateRecord, ...readLocalCache()]);
+    writeLocalCache(merged);
+    return candidateRecord;
   }
 }

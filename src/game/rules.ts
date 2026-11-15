@@ -135,28 +135,28 @@ export const GRADE_CERTIFICATES: Record<
     grade: 1,
     label: '1급',
     sprite: '/assets/sprites/cert_1.png',
-    minScore: 25,
+    minScore: 60,
     shimmerTier: 'rainbow',
   },
   2: {
     grade: 2,
     label: '2급',
     sprite: '/assets/sprites/cert_2.png',
-    minScore: 18,
+    minScore: 38,
     shimmerTier: 'silver',
   },
   3: {
     grade: 3,
     label: '3급',
     sprite: '/assets/sprites/cert_3.png',
-    minScore: 10,
+    minScore: 20,
     shimmerTier: 'bronze',
   },
   4: {
     grade: 4,
     label: '4급',
     sprite: '/assets/sprites/cert_4.png',
-    minScore: 5,
+    minScore: 8,
     shimmerTier: 'mint',
   },
   5: {
@@ -301,7 +301,7 @@ export function getMinimumCumulativeWeeds(
   durationSeconds = EXAM_DURATION_SECONDS,
 ): number {
   const clampedElapsed = Math.max(0, Math.min(durationSeconds, elapsedSeconds));
-  const weedsPerSecond = durationSeconds >= RANKING_DURATION_SECONDS ? 2.5 : 2.4;
+  const weedsPerSecond = durationSeconds >= RANKING_DURATION_SECONDS ? 4.5 : 4.5;
   return 5 + Math.floor(clampedElapsed * weedsPerSecond);
 }
 
@@ -368,6 +368,27 @@ export function sanitizePlayerName(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim().slice(0, MAX_PLAYER_NAME_LENGTH);
 }
 
+export function toPlayerRankingDocId(playerName: string): string {
+  const clean = sanitizePlayerName(playerName) || '도전자';
+  const bytes = new TextEncoder().encode(clean);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return `name_${hex}`;
+}
+
+export function isBetterRankingResult(
+  candidate: Pick<RankingRecord, 'score' | 'pulledWeeds' | 'mistakes'>,
+  existing: Pick<RankingRecord, 'score' | 'pulledWeeds' | 'mistakes'>,
+): boolean {
+  if (candidate.score !== existing.score) return candidate.score > existing.score;
+  if (candidate.pulledWeeds !== existing.pulledWeeds) {
+    return candidate.pulledWeeds > existing.pulledWeeds;
+  }
+  return candidate.mistakes < existing.mistakes;
+}
+
 export function sortRankingRecords(records: RankingRecord[]): RankingRecord[] {
   return [...records].sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
@@ -375,4 +396,17 @@ export function sortRankingRecords(records: RankingRecord[]): RankingRecord[] {
     if (a.mistakes !== b.mistakes) return a.mistakes - b.mistakes;
     return a.createdAtMs - b.createdAtMs;
   });
+}
+
+export function deduplicateBestRankings(records: RankingRecord[]): RankingRecord[] {
+  const sorted = sortRankingRecords(records);
+  const seen = new Set<string>();
+  const best: RankingRecord[] = [];
+  for (const r of sorted) {
+    const key = sanitizePlayerName(r.playerName) || r.playerName;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    best.push(r);
+  }
+  return best;
 }
