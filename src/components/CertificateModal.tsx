@@ -1,25 +1,32 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { BookOpen, Download, Home, RotateCcw } from 'lucide-react';
+import { BookOpen, Download, Home, RotateCcw, Trophy } from 'lucide-react';
 import {
   CHARACTER_PORTRAITS,
   CharacterId,
   ExamStats,
   GRADE_CERTIFICATES,
+  GameMode,
+  PortraitChoice,
   WeedingGrade,
   computeGrade,
 } from '../game/rules';
+import { CameraCaptureModal } from './CameraCaptureModal';
 import { SoundButton } from './SoundButton';
 
 interface CertificateModalProps {
+  mode: GameMode;
+  playerName?: string;
+  rankingSaving?: boolean;
+  rankingSavedId?: string | null;
   stats: ExamStats;
   muted: boolean;
   onToggleMute: () => void;
   onOpenStudy: () => void;
+  onOpenRanking: () => void;
+  onPortraitChoiceChange?: (choice: PortraitChoice) => void;
   onRetry: () => void;
   onGoHome: () => void;
 }
-
-const PORTRAIT_ORDER: CharacterId[] = ['chiikawa', 'hachiware', 'usagi'];
 
 // Pixel-measured inner white ID box & camera badge bounds per certificate image
 const GRADE_ID_BOX: Record<
@@ -43,33 +50,36 @@ const SPARKLE_POSITIONS = [
 ];
 
 export const CertificateModal: React.FC<CertificateModalProps> = ({
+  mode,
+  playerName,
+  rankingSaving = false,
+  rankingSavedId,
   stats,
   muted,
   onToggleMute,
   onOpenStudy,
+  onOpenRanking,
+  onPortraitChoiceChange,
   onRetry,
   onGoHome,
 }) => {
   const grade = computeGrade(stats.score);
   const cert = GRADE_CERTIFICATES[grade];
   const idBox = GRADE_ID_BOX[grade];
-  const [portraitIdx, setPortraitIdx] = useState(0);
+
+  const [selectedChar, setSelectedChar] = useState<CharacterId>('chiikawa');
+  const [customPhotoUrl, setCustomPhotoUrl] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [tilt, setTilt] = useState({ rx: 0, ry: 0 });
   const [saving, setSaving] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const activePortraitId = PORTRAIT_ORDER[portraitIdx];
-  const activePortrait = CHARACTER_PORTRAITS[activePortraitId];
+  const activePortrait = CHARACTER_PORTRAITS[selectedChar];
 
   const sparkles = useMemo(() => {
-    // Higher grades show all sparkles, lower grades still shine & sparkle nicely
     const count = grade <= 2 ? 6 : grade === 3 ? 5 : 4;
     return SPARKLE_POSITIONS.slice(0, count);
   }, [grade]);
-
-  const handleCyclePortrait = () => {
-    setPortraitIdx((prev) => (prev + 1) % PORTRAIT_ORDER.length);
-  };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = cardRef.current;
@@ -106,9 +116,10 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
       canvas.height = certImg.naturalHeight * 2;
       const ctx = canvas.getContext('2d')!;
 
-      // Composite chosen character portrait behind a clipped cutout or cleanly inside the ID box
-      if (activePortraitId !== 'chiikawa') {
-        const charImg = await loadImg(activePortrait.sprite);
+      const customSrc = customPhotoUrl || (selectedChar !== 'chiikawa' ? activePortrait.sprite : null);
+
+      if (customSrc) {
+        const photoImg = await loadImg(customSrc);
         const boxX = canvas.width * (idBox.left / 100);
         const boxY = canvas.height * (idBox.top / 100);
         const boxW = canvas.width * (idBox.width / 100);
@@ -123,23 +134,46 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
         octx.roundRect(boxX, boxY, boxW, boxH, boxW * 0.12);
         octx.fill();
 
-        const pad = boxW * 0.06;
-        const maxW = boxW - pad * 2;
-        const maxH = boxH - pad * 2;
-        const scale = Math.min(maxW / charImg.naturalWidth, maxH / charImg.naturalHeight);
-        const dw = charImg.naturalWidth * scale;
-        const dh = charImg.naturalHeight * scale;
         octx.save();
         octx.beginPath();
         octx.roundRect(boxX, boxY, boxW, boxH, boxW * 0.12);
         octx.clip();
-        octx.drawImage(
-          charImg,
-          boxX + (boxW - dw) / 2,
-          boxY + boxH - dh - pad * 0.35,
-          dw,
-          dh,
-        );
+
+        if (customPhotoUrl) {
+          // Cover-crop camera photo inside ID box
+          const boxRatio = boxW / boxH;
+          const imgRatio = photoImg.naturalWidth / photoImg.naturalHeight;
+          let dw = boxW;
+          let dh = boxH;
+          if (imgRatio > boxRatio) {
+            dh = boxH;
+            dw = dh * imgRatio;
+          } else {
+            dw = boxW;
+            dh = dw / imgRatio;
+          }
+          octx.drawImage(
+            photoImg,
+            boxX + (boxW - dw) / 2,
+            boxY + (boxH - dh) / 2,
+            dw,
+            dh,
+          );
+        } else {
+          const pad = boxW * 0.06;
+          const maxW = boxW - pad * 2;
+          const maxH = boxH - pad * 2;
+          const scale = Math.min(maxW / photoImg.naturalWidth, maxH / photoImg.naturalHeight);
+          const dw = photoImg.naturalWidth * scale;
+          const dh = photoImg.naturalHeight * scale;
+          octx.drawImage(
+            photoImg,
+            boxX + (boxW - dw) / 2,
+            boxY + boxH - dh - pad * 0.35,
+            dw,
+            dh,
+          );
+        }
         octx.restore();
 
         // Carve out circular notch for the yellow camera badge
@@ -162,7 +196,6 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
       a.click();
       document.body.removeChild(a);
     } catch {
-      // Fallback: direct download of certificate asset
       const a = document.createElement('a');
       a.href = cert.sprite;
       a.download = `제초자격증-${grade}급.png`;
@@ -174,20 +207,22 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     }
   };
 
+  const showOverlayPortrait = Boolean(customPhotoUrl) || selectedChar !== 'chiikawa';
+
   return (
     <div
-      className="fixed inset-0 z-20 flex flex-col justify-between bg-[#e6efda]/76 p-5 sm:p-7"
+      className="fixed inset-0 z-20 flex flex-col justify-between overflow-y-auto bg-[#e6efda]/76 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-7"
       role="dialog"
       aria-modal="true"
       aria-label={`제초 ${grade}급 자격증 결과`}
     >
       {/* Top corner buttons matching IMG_1426–1431 */}
-      <div className="flex items-start justify-between">
+      <div className="flex shrink-0 items-start justify-between">
         <button
           type="button"
           onClick={onGoHome}
           aria-label="처음 화면으로"
-          className="game-btn flex h-11 w-11 items-center justify-center rounded-full bg-[#fbf9f1] text-[#342f2a]"
+          className="game-btn flex h-10 w-10 items-center justify-center rounded-full bg-[#fbf9f1] text-[#342f2a] sm:h-11 sm:w-11"
         >
           <Home className="h-5 w-5" strokeWidth={2.4} />
         </button>
@@ -196,18 +231,32 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
       </div>
 
       {/* Center Certificate + Stats & Actions */}
-      <div className="my-auto flex flex-col items-center">
+      <div className="my-auto flex flex-col items-center py-2">
+        {mode === 'ranking' && (
+          <div className="game-pill mb-3 flex items-center gap-2 rounded-full bg-[#fff5c4] px-4 py-1 text-base font-bold text-[#342f2a] sm:text-lg">
+            <Trophy className="h-4 w-4 text-[#d99114]" strokeWidth={2.5} />
+            <span>
+              30초 랭킹 도전 · {playerName || '도전자'}
+            </span>
+            <span className="rounded-full bg-[#83bc7b] px-2 py-0.5 text-xs text-white">
+              {rankingSaving ? '저장 중...' : rankingSavedId ? '랭킹 등록 완료!' : '기록 완료'}
+            </span>
+          </div>
+        )}
+
         {/* Certificate Card with 3D tilt, clipped sweeping white glare, and twinkling sparkles */}
-        <div
-          ref={cardRef}
-          onPointerMove={handlePointerMove}
-          onPointerLeave={handlePointerLeave}
-          className="cert-float relative w-[min(430px,86vw)] select-none"
-          style={{
-            transform: `perspective(900px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
-            transition: 'transform 160ms ease-out',
-          }}
-        >
+        <div className="cert-float">
+          <div
+            ref={cardRef}
+            data-testid="cert-card"
+            onPointerMove={handlePointerMove}
+            onPointerLeave={handlePointerLeave}
+            className="relative w-[min(360px,84vw)] select-none sm:w-[min(430px,86vw)]"
+            style={{
+              transform: `perspective(900px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
+              transition: 'transform 160ms ease-out',
+            }}
+          >
           <img
             src={cert.sprite}
             alt={`제초 ${grade}급 자격증`}
@@ -216,10 +265,12 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             draggable={false}
           />
 
-          {/* Swapped portrait overlay cleanly inset inside the ID frame with a curved corner clearing the camera icon */}
-          {activePortraitId !== 'chiikawa' && (
+          {/* Swapped portrait or user camera selfie cleanly inset inside ID box */}
+          {showOverlayPortrait && (
             <div
-              className="pointer-events-none absolute flex items-end justify-center overflow-hidden bg-white p-1"
+              className={`pointer-events-none absolute flex items-end justify-center overflow-hidden bg-white ${
+                customPhotoUrl ? 'p-0' : 'p-1'
+              }`}
               style={{
                 left: `${idBox.left}%`,
                 top: `${idBox.top}%`,
@@ -228,16 +279,24 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
                 borderRadius: '10% 10% 42% 10% / 10% 10% 36% 10%',
               }}
             >
-              <img
-                src={activePortrait.sprite}
-                alt={activePortrait.name}
-                referrerPolicy="no-referrer"
-                className="h-[92%] w-auto object-contain"
-              />
+              {customPhotoUrl ? (
+                <img
+                  src={customPhotoUrl}
+                  alt="내 자격증 사진"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <img
+                  src={activePortrait.sprite}
+                  alt={activePortrait.name}
+                  referrerPolicy="no-referrer"
+                  className="h-[92%] w-auto object-contain"
+                />
+              )}
             </div>
           )}
 
-          {/* Sweeping white light glare masked cleanly to the certificate's hand-drawn silhouette */}
+          {/* Sweeping white light glare: travels left->right across card silhouette and exits cleanly */}
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -251,17 +310,10 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             }}
           >
             <div
-              className="cert-shine-beam absolute -inset-y-8 w-[42%]"
+              className="cert-shine-beam absolute -inset-y-8 left-0 w-[28%]"
               style={{
                 background:
-                  'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.28) 28%, rgba(255,255,255,0.85) 50%, rgba(255,255,255,0.32) 72%, rgba(255,255,255,0) 100%)',
-              }}
-            />
-            <div
-              className="cert-shine-beam-secondary absolute -inset-y-8 w-[14%]"
-              style={{
-                background:
-                  'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.7) 50%, rgba(255,255,255,0) 100%)',
+                  'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.28) 25%, rgba(255,255,255,0.92) 50%, rgba(255,255,255,0.28) 75%, rgba(255,255,255,0) 100%)',
               }}
             />
           </div>
@@ -269,9 +321,9 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
           {/* Interactive camera button over the yellow camera icon on the ID frame */}
           <button
             type="button"
-            onClick={handleCyclePortrait}
-            title={`사진 변경 (현재: ${activePortrait.name})`}
-            aria-label={`자격증 사진 캐릭터 변경 (현재 ${activePortrait.name})`}
+            onClick={() => setCameraOpen(true)}
+            title="카메라로 내 사진 찍기 / 캐릭터 변경"
+            aria-label="카메라로 자격증 사진 찍기 또는 캐릭터 변경"
             className="absolute rounded-full focus-visible:outline-2 focus-visible:outline-blue-500"
             style={{
               left: `${idBox.camLeft}%`,
@@ -309,30 +361,31 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
               />
             </svg>
           ))}
+          </div>
         </div>
 
-        {/* Row 1: 3 stat pills + 제초 공부 button (matching IMG_1426–1431) */}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
+        {/* Row 1: 3 stat pills + 제초 공부 button */}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2 sm:mt-6 sm:gap-3">
           <div
-            className="game-pill flex items-center gap-2 rounded-full px-4 py-1.5"
+            className="game-pill flex items-center gap-1.5 rounded-full px-3 py-1 sm:gap-2 sm:px-4 sm:py-1.5"
             aria-label={`뽑은 잡초 ${stats.score}개`}
           >
             <img
               src="/assets/sprites/weed_long_lg.png"
               alt="잡초"
               referrerPolicy="no-referrer"
-              className="h-6 w-auto object-contain"
+              className="h-5 w-auto object-contain sm:h-6"
             />
-            <span data-testid="result-score" className="font-hand tabular-nums text-xl font-bold">
+            <span data-testid="result-score" className="font-hand tabular-nums text-lg font-bold sm:text-xl">
               {stats.score}
             </span>
           </div>
 
           <div
-            className="game-pill flex items-center gap-1.5 rounded-full px-4 py-1.5"
+            className="game-pill flex items-center gap-1 rounded-full px-3 py-1 sm:gap-1.5 sm:px-4 sm:py-1.5"
             aria-label={`최대 콤보 ${stats.maxCombo}`}
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+            <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 d="M12.5 2C12.5 2 17 6.5 17 11.5C17 14.8 14.8 17.5 12 17.5C9.2 17.5 7 14.8 7 11.5C7 9.7 7.8 8.2 8.7 7C8.7 7 9.2 9.4 10.6 9.8C10.1 7.2 11.5 4 12.5 2Z"
                 fill="#ff7b3b"
@@ -341,24 +394,24 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
                 strokeLinejoin="round"
               />
             </svg>
-            <span data-testid="result-combo" className="font-hand tabular-nums text-xl font-bold">
+            <span data-testid="result-combo" className="font-hand tabular-nums text-lg font-bold sm:text-xl">
               x{stats.maxCombo}
             </span>
           </div>
 
           <div
-            className="game-pill flex items-center gap-2 rounded-full px-4 py-1.5"
+            className="game-pill flex items-center gap-1.5 rounded-full px-3 py-1 sm:gap-2 sm:px-4 sm:py-1.5"
             aria-label={`실수한 꽃 ${stats.mistakes}개`}
           >
             <img
               src="/assets/sprites/flower_yellow.png"
               alt="꽃"
               referrerPolicy="no-referrer"
-              className="h-6 w-auto object-contain"
+              className="h-5 w-auto object-contain sm:h-6"
             />
             <span
               data-testid="result-mistakes"
-              className="font-hand tabular-nums text-xl font-bold text-[#c94141]"
+              className="font-hand tabular-nums text-lg font-bold text-[#c94141] sm:text-xl"
             >
               {stats.mistakes}
             </span>
@@ -367,20 +420,20 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
           <button
             type="button"
             onClick={onOpenStudy}
-            className="game-btn font-hand flex items-center gap-2 rounded-full bg-[#b4dc9c] px-4 py-1.5 text-xl font-bold text-[#342f2a] whitespace-nowrap"
+            className="game-btn font-hand flex items-center gap-1.5 rounded-full bg-[#b4dc9c] px-3.5 py-1 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-4 sm:py-1.5 sm:text-xl"
           >
             <BookOpen className="h-4 w-4" strokeWidth={2.5} />
             <span>제초 공부</span>
           </button>
         </div>
 
-        {/* Row 2: 자격증 저장 & 다시 도전 buttons */}
-        <div className="mt-3.5 flex flex-wrap items-center justify-center gap-3">
+        {/* Row 2: 자격증 저장, 랭킹표, 다시 도전 buttons */}
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2.5 sm:mt-3.5 sm:gap-3">
           <button
             type="button"
             onClick={handleDownloadCertificate}
             disabled={saving}
-            className="game-btn font-hand flex items-center gap-2 rounded-2xl bg-[#fbf9f1] px-5 py-2.5 text-xl font-bold text-[#342f2a] whitespace-nowrap"
+            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fbf9f1] px-4 py-2 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-2.5 sm:text-xl"
           >
             <Download className="h-4 w-4" strokeWidth={2.5} />
             <span>{saving ? '저장 중...' : '자격증 저장'}</span>
@@ -388,9 +441,18 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
 
           <button
             type="button"
+            onClick={onOpenRanking}
+            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fbf9f1] px-4 py-2 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-2.5 sm:text-xl"
+          >
+            <Trophy className="h-4 w-4 text-[#e09f1f]" strokeWidth={2.5} />
+            <span>랭킹표</span>
+          </button>
+
+          <button
+            type="button"
             data-start="true"
             onClick={onRetry}
-            className="game-btn font-hand flex items-center gap-2 rounded-2xl bg-[#fdd64c] px-6 py-2.5 text-xl font-bold text-[#342f2a] whitespace-nowrap"
+            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fdd64c] px-5 py-2 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-6 sm:py-2.5 sm:text-xl"
           >
             <RotateCcw className="h-4 w-4" strokeWidth={2.5} />
             <span>다시 도전</span>
@@ -399,7 +461,26 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
       </div>
 
       {/* Bottom spacer for balanced vertical framing */}
-      <div className="h-4" aria-hidden="true" />
+      <div className="h-2 sm:h-4" aria-hidden="true" />
+
+      {cameraOpen && (
+        <CameraCaptureModal
+          activeCharacter={selectedChar}
+          hasCustomPhoto={Boolean(customPhotoUrl)}
+          onSelectCameraPhoto={(dataUrl) => {
+            setCustomPhotoUrl(dataUrl);
+            onPortraitChoiceChange?.('camera');
+            setCameraOpen(false);
+          }}
+          onSelectCharacter={(charId) => {
+            setCustomPhotoUrl(null);
+            setSelectedChar(charId);
+            onPortraitChoiceChange?.(charId);
+            setCameraOpen(false);
+          }}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
     </div>
   );
 };

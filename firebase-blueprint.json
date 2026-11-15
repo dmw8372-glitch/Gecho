@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "RankingEntry": {
+      "title": "RankingEntry",
+      "description": "30-second weeding time-attack leaderboard entry",
+      "type": "object",
+      "properties": {
+        "playerName": {
+          "type": "string",
+          "description": "Player nickname shown on the ranking table",
+          "minLength": 1,
+          "maxLength": 12
+        },
+        "score": {
+          "type": "integer",
+          "description": "Final net weeding score achieved in 30 seconds"
+        },
+        "pulledWeeds": {
+          "type": "integer",
+          "description": "Total number of weeds pulled during the 30-second round"
+        },
+        "maxCombo": {
+          "type": "integer",
+          "description": "Longest consecutive weed combo achieved"
+        },
+        "mistakes": {
+          "type": "integer",
+          "description": "Number of protected flowers or vegetables pulled by mistake"
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "description": "Challenge duration in seconds (always 30 for ranking mode)"
+        },
+        "portraitId": {
+          "type": "string",
+          "enum": ["chiikawa", "hachiware", "usagi", "camera"],
+          "description": "Selected character or camera portrait type"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the score was recorded"
+        },
+        "uid": {
+          "type": "string",
+          "description": "Optional authenticated Firebase user UID"
+        }
+      },
+      "required": [
+        "playerName",
+        "score",
+        "pulledWeeds",
+        "maxCombo",
+        "mistakes",
+        "durationSeconds",
+        "portraitId",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/rankings/{entryId}": {
+      "schema": { "$ref": "#/entities/RankingEntry" },
+      "description": "Public 30-second weeding challenge leaderboard records"
+    }
+  }
+}

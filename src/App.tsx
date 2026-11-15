@@ -2,34 +2,58 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CertificateModal } from './components/CertificateModal';
 import { PauseModal } from './components/PauseModal';
 import { FloatingFeedback, PlayingHud } from './components/PlayingHud';
+import { RankingModal } from './components/RankingModal';
 import { StudyModal } from './components/StudyModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { MeadowScene, PlantPullEvent } from './game/MeadowScene';
 import { soundFx } from './game/audio';
+import { submitRankingEntry } from './game/rankings';
 import {
   EXAM_DURATION_SECONDS,
   ExamStats,
+  GameMode,
   GameScreen,
+  PortraitChoice,
   applyPlantPull,
   computeGrade,
   createInitialExamStats,
+  getModeDuration,
 } from './game/rules';
+
+const SAVED_NAME_KEY = 'chiikawa_weeding_player_name';
 
 export default function App() {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<MeadowScene | null>(null);
 
   const [screen, setScreen] = useState<GameScreen>('title');
+  const [mode, setMode] = useState<GameMode>('exam');
+  const [playerName, setPlayerName] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem(SAVED_NAME_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [studyOpen, setStudyOpen] = useState(false);
+  const [rankingOpen, setRankingOpen] = useState(false);
   const [muted, setMuted] = useState(false);
   const [stats, setStats] = useState<ExamStats>(createInitialExamStats);
   const [remainingSeconds, setRemainingSeconds] = useState(EXAM_DURATION_SECONDS);
   const [feedbacks, setFeedbacks] = useState<FloatingFeedback[]>([]);
+  const [rankingSaving, setRankingSaving] = useState(false);
+  const [rankingSavedId, setRankingSavedId] = useState<string | null>(null);
 
   const statsRef = useRef<ExamStats>(stats);
   statsRef.current = stats;
   const screenRef = useRef<GameScreen>(screen);
   screenRef.current = screen;
+  const modeRef = useRef<GameMode>(mode);
+  modeRef.current = mode;
+  const playerNameRef = useRef<string>(playerName);
+  playerNameRef.current = playerName;
+  const portraitChoiceRef = useRef<PortraitChoice>('chiikawa');
+
   const feedbackIdRef = useRef(1);
   const lastSecondRef = useRef(EXAM_DURATION_SECONDS);
 
@@ -49,7 +73,7 @@ export default function App() {
 
       if (event.isWeed) {
         soundFx.playWeedPull(result.next.combo);
-        if (result.gradeChanged) {
+        if (result.gradeChanged && modeRef.current === 'exam') {
           soundFx.playGradeUp();
         }
         pushFeedback({
@@ -82,28 +106,75 @@ export default function App() {
   }, []);
 
   const handleExamFinished = useCallback(() => {
-    const finalGrade = computeGrade(statsRef.current.score);
+    const finalStats = statsRef.current;
+    const finalGrade = computeGrade(finalStats.score);
     soundFx.playExamFinish(finalGrade);
     setRemainingSeconds(0);
     setScreen('gameover');
+
+    if (modeRef.current === 'ranking') {
+      setRankingSaving(true);
+      setRankingSavedId(null);
+      submitRankingEntry({
+        playerName: playerNameRef.current || '도전자',
+        stats: finalStats,
+        portraitId: portraitChoiceRef.current,
+      })
+        .then((record) => {
+          setRankingSavedId(record.id);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          setRankingSaving(false);
+        });
+    }
   }, []);
 
-  const startExam = useCallback(() => {
+  const startRound = useCallback((targetMode: GameMode, chosenName?: string) => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
+    const duration = getModeDuration(targetMode);
+    if (chosenName !== undefined) {
+      setPlayerName(chosenName);
+      playerNameRef.current = chosenName;
+      try {
+        window.localStorage.setItem(SAVED_NAME_KEY, chosenName);
+      } catch {
+        // Ignore storage error
+      }
+    }
+
     soundFx.playExamStart();
     const fresh = createInitialExamStats();
     statsRef.current = fresh;
-    lastSecondRef.current = EXAM_DURATION_SECONDS;
+    modeRef.current = targetMode;
+    lastSecondRef.current = duration;
+
+    setMode(targetMode);
     setStats(fresh);
-    setRemainingSeconds(EXAM_DURATION_SECONDS);
+    setRemainingSeconds(duration);
     setFeedbacks([]);
+    setRankingSaving(false);
+    setRankingSavedId(null);
     setStudyOpen(false);
+    setRankingOpen(false);
     setScreen('playing');
+
+    sceneRef.current?.startNewExamRound(duration);
     sceneRef.current?.setScreen('playing');
-    sceneRef.current?.startNewExamRound();
   }, []);
+
+  const startExam = useCallback(() => {
+    startRound('exam');
+  }, [startRound]);
+
+  const startRankingChallenge = useCallback(
+    (name: string) => {
+      startRound('ranking', name);
+    },
+    [startRound],
+  );
 
   const pauseExam = useCallback(() => {
     if (screenRef.current !== 'playing') return;
@@ -122,7 +193,10 @@ export default function App() {
   const goHome = useCallback(() => {
     soundFx.playClick();
     setStudyOpen(false);
+    setRankingOpen(false);
     setFeedbacks([]);
+    setMode('exam');
+    modeRef.current = 'exam';
     setScreen('title');
     sceneRef.current?.setScreen('title');
   }, []);
@@ -143,8 +217,10 @@ export default function App() {
 
   // Pause background 3D loop while modal overlays cover the viewport
   useEffect(() => {
-    sceneRef.current?.setModalOpen(studyOpen || screen === 'gameover' || screen === 'paused');
-  }, [studyOpen, screen]);
+    sceneRef.current?.setModalOpen(
+      studyOpen || rankingOpen || screen === 'gameover' || screen === 'paused',
+    );
+  }, [studyOpen, rankingOpen, screen]);
 
   // Mount Three.js scene once
   useEffect(() => {
@@ -164,8 +240,8 @@ export default function App() {
       setStats(fresh);
       setRemainingSeconds(EXAM_DURATION_SECONDS);
       setScreen('playing');
+      meadow.startNewExamRound(EXAM_DURATION_SECONDS);
       meadow.setScreen('playing');
-      meadow.startNewExamRound();
     }
 
     return () => {
@@ -178,9 +254,11 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (studyOpen) {
-        if (e.key === 'Escape') {
-          setStudyOpen(false);
-        }
+        if (e.key === 'Escape') setStudyOpen(false);
+        return;
+      }
+      if (rankingOpen) {
+        if (e.key === 'Escape') setRankingOpen(false);
         return;
       }
 
@@ -197,9 +275,10 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pauseExam, resumeExam, startExam, studyOpen]);
+  }, [pauseExam, rankingOpen, resumeExam, startExam, studyOpen]);
 
   const currentGrade = computeGrade(stats.score);
+  const activeDuration = getModeDuration(mode);
 
   return (
     <main className="relative h-full w-full overflow-hidden bg-[#dfecd4]">
@@ -210,7 +289,7 @@ export default function App() {
         className="absolute inset-0 h-full w-full"
       />
 
-      {screen === 'title' && !studyOpen && (
+      {screen === 'title' && !studyOpen && !rankingOpen && (
         <TitleOverlay
           muted={muted}
           onToggleMute={toggleMute}
@@ -218,12 +297,19 @@ export default function App() {
             soundFx.playClick();
             setStudyOpen(true);
           }}
+          onOpenRanking={() => {
+            soundFx.playClick();
+            setRankingOpen(true);
+          }}
           onStartExam={startExam}
         />
       )}
 
       {screen === 'playing' && (
         <PlayingHud
+          mode={mode}
+          playerName={playerName}
+          durationSeconds={activeDuration}
           score={stats.score}
           combo={stats.combo}
           grade={currentGrade}
@@ -235,16 +321,22 @@ export default function App() {
 
       {screen === 'paused' && (
         <PauseModal
+          mode={mode}
+          playerName={playerName}
           score={stats.score}
           remainingSeconds={remainingSeconds}
           onResume={resumeExam}
-          onRestart={startExam}
+          onRestart={() => startRound(mode)}
           onGoHome={goHome}
         />
       )}
 
-      {screen === 'gameover' && !studyOpen && (
+      {screen === 'gameover' && !studyOpen && !rankingOpen && (
         <CertificateModal
+          mode={mode}
+          playerName={playerName}
+          rankingSaving={rankingSaving}
+          rankingSavedId={rankingSavedId}
           stats={stats}
           muted={muted}
           onToggleMute={toggleMute}
@@ -252,7 +344,14 @@ export default function App() {
             soundFx.playClick();
             setStudyOpen(true);
           }}
-          onRetry={startExam}
+          onOpenRanking={() => {
+            soundFx.playClick();
+            setRankingOpen(true);
+          }}
+          onPortraitChoiceChange={(choice) => {
+            portraitChoiceRef.current = choice;
+          }}
+          onRetry={() => startRound(mode)}
           onGoHome={goHome}
         />
       )}
@@ -265,6 +364,18 @@ export default function App() {
           }}
           onStartExam={startExam}
           showStartCta={screen === 'title'}
+        />
+      )}
+
+      {rankingOpen && (
+        <RankingModal
+          initialPlayerName={playerName}
+          highlightEntryId={rankingSavedId}
+          onStartRanking={startRankingChallenge}
+          onClose={() => {
+            soundFx.playClick();
+            setRankingOpen(false);
+          }}
         />
       )}
     </main>

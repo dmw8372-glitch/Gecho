@@ -16,9 +16,12 @@
   #root {
     width: 100%;
     height: 100%;
+    height: 100dvh;
     margin: 0;
     padding: 0;
     overflow: hidden;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
     user-select: none;
     -webkit-user-select: none;
     background-color: #dcebd2;
@@ -69,22 +72,25 @@
   box-shadow: 0 2px 0 rgba(52, 47, 42, 0.16);
 }
 
-/* Certificate sweeping white light shine + sparkle animations */
+/* Certificate sweeping white light shine: travels completely across left->right and disappears cleanly */
 @keyframes certLightSweep {
   0% {
-    transform: translateX(-140%) skewX(-22deg);
+    transform: translateX(-180%) skewX(-22deg);
     opacity: 0;
   }
-  12% {
-    opacity: 0.92;
+  7% {
+    opacity: 0.98;
   }
-  58% {
-    transform: translateX(230%) skewX(-22deg);
-    opacity: 0.92;
+  44% {
+    opacity: 0.98;
   }
-  65%,
+  50% {
+    transform: translateX(520%) skewX(-22deg);
+    opacity: 0;
+  }
+  51%,
   100% {
-    transform: translateX(230%) skewX(-22deg);
+    transform: translateX(520%) skewX(-22deg);
     opacity: 0;
   }
 }
@@ -111,7 +117,7 @@
     transform: translateY(0px);
   }
   50% {
-    transform: translateY(-5px);
+    transform: translateY(-4px);
   }
 }
 
@@ -131,11 +137,7 @@
 }
 
 .cert-shine-beam {
-  animation: certLightSweep 2.8s cubic-bezier(0.35, 0, 0.25, 1) infinite;
-}
-
-.cert-shine-beam-secondary {
-  animation: certLightSweep 2.8s cubic-bezier(0.35, 0, 0.25, 1) 0.22s infinite;
+  animation: certLightSweep 2.6s cubic-bezier(0.32, 0, 0.24, 1) infinite;
 }
 
 .cert-sparkle {
@@ -152,7 +154,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cert-shine-beam,
-  .cert-shine-beam-secondary,
   .cert-sparkle,
   .cert-float {
     animation: none;

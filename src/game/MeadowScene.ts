@@ -97,6 +97,8 @@ interface ButterflyActor {
 const _vec3 = new THREE.Vector3();
 const _mat4 = new THREE.Matrix4();
 const _quat = new THREE.Quaternion();
+const _standQuat = new THREE.Quaternion();
+const _charQuat = new THREE.Quaternion();
 const _euler = new THREE.Euler();
 const _scale = new THREE.Vector3();
 const _pointerNdc = new THREE.Vector2();
@@ -286,10 +288,12 @@ export class MeadowScene {
 
   private currentScreen: GameScreen = 'title';
   private modalPaused = false;
+  private roundDuration = EXAM_DURATION_SECONDS;
   private examRemaining = EXAM_DURATION_SECONDS;
   private examElapsed = 0;
   private spawnCooldown = 0;
   private lastReportedSecond = EXAM_DURATION_SECONDS;
+  private currentAspect = 16 / 9;
 
   // Camera smooth targets
   private cameraPosTarget = new THREE.Vector3(0, 7.6, 11.4);
@@ -323,10 +327,12 @@ export class MeadowScene {
 
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
+    this.currentAspect = width / Math.max(1, height);
     this.renderer.setSize(width, height);
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.touchAction = 'none';
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -334,8 +340,10 @@ export class MeadowScene {
     this.scene.background = skyColor;
     this.scene.fog = new THREE.Fog('#dfecd4', 24, 58);
 
-    this.camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 120);
+    this.camera = new THREE.PerspectiveCamera(this.computeResponsiveFov(this.currentAspect), this.currentAspect, 0.1, 120);
+    this.applyCameraTargetsForScreen(this.currentScreen);
     this.camera.position.copy(this.cameraPosTarget);
+    this.cameraLookCurrent.copy(this.cameraLookTarget);
     this.camera.lookAt(this.cameraLookCurrent);
 
     // Environment reflections
@@ -654,17 +662,17 @@ export class MeadowScene {
       }
     };
 
-    // Back fence: x from -6.8 to +6.8 at z = -4.6
+    // Back fence placed well behind characters so character heads never clip fence posts/rails
     const backXs = [-6.8, -4.53, -2.26, 0, 2.26, 4.53, 6.8];
     for (let i = 0; i < backXs.length; i++) {
-      addPost(backXs[i], -4.6);
+      addPost(backXs[i], -5.45);
       if (i < backXs.length - 1) {
-        addRailSegment(backXs[i], -4.6, backXs[i + 1], -4.6);
+        addRailSegment(backXs[i], -5.45, backXs[i + 1], -5.45);
       }
     }
 
-    // Left & Right fences: z from -4.6 to +4.8
-    const sideZs = [-4.6, -2.25, 0.1, 2.45, 4.8];
+    // Left & Right fences: z from -5.45 to +4.8
+    const sideZs = [-5.45, -2.9, -0.35, 2.2, 4.8];
     for (let i = 1; i < sideZs.length; i++) {
       addPost(-6.8, sideZs[i]);
       addRailSegment(-6.8, sideZs[i - 1], -6.8, sideZs[i]);
@@ -734,7 +742,7 @@ export class MeadowScene {
         id: 'usagi',
         sprite: '/assets/sprites/usagi_s2.png',
         x: -2.45,
-        z: -3.72,
+        z: -3.52,
         width: 1.48,
         height: 1.98,
         phase: 0.0,
@@ -743,7 +751,7 @@ export class MeadowScene {
         id: 'chiikawa',
         sprite: '/assets/sprites/chiikawa_s2.png',
         x: 0.0,
-        z: -3.6,
+        z: -3.38,
         width: 1.42,
         height: 1.58,
         phase: 1.8,
@@ -752,7 +760,7 @@ export class MeadowScene {
         id: 'hachiware',
         sprite: '/assets/sprites/hachiware_s2.png',
         x: 2.45,
-        z: -3.72,
+        z: -3.52,
         width: 1.5,
         height: 1.72,
         phase: 3.4,
@@ -934,17 +942,17 @@ export class MeadowScene {
     this.clearPlants();
     // Decorative lively meadow arrangement matching IMG_1421
     const showcase: Array<{ id: string; x: number; z: number }> = [
-      { id: 'weed_long_lg', x: -3.4, z: -0.9 },
-      { id: 'weed_toothed_buds_lg', x: -1.4, z: -1.2 },
-      { id: 'flower_cluster', x: -2.2, z: -2.3 },
-      { id: 'weed_toothed_2', x: 0.1, z: -1.4 },
-      { id: 'flower_yellow', x: 1.3, z: -2.2 },
-      { id: 'flower_white', x: 0.9, z: 0.4 },
-      { id: 'weed_clump', x: 2.3, z: -0.1 },
-      { id: 'veg_cabbage', x: 3.4, z: -0.3 },
-      { id: 'veg_carrot', x: 2.6, z: -2.2 },
-      { id: 'veg_strawberry', x: 3.8, z: -1.7 },
-      { id: 'weed_clump_sm', x: 4.1, z: 1.2 },
+      { id: 'weed_long_lg', x: -3.5, z: -0.8 },
+      { id: 'weed_toothed_buds_lg', x: -1.45, z: -1.1 },
+      { id: 'flower_cluster', x: -2.3, z: -2.2 },
+      { id: 'weed_clump', x: 0.15, z: -1.25 },
+      { id: 'flower_yellow', x: 1.35, z: -2.1 },
+      { id: 'flower_white', x: 0.95, z: 0.5 },
+      { id: 'weed_clump', x: 2.35, z: 0.1 },
+      { id: 'veg_cabbage', x: 3.55, z: -0.35 },
+      { id: 'veg_carrot', x: 2.7, z: -2.1 },
+      { id: 'veg_clover', x: 3.9, z: -1.65 },
+      { id: 'weed_long_lg', x: 4.1, z: 1.35 },
     ];
     for (const item of showcase) {
       const def = PLANT_CATALOG.find((p) => p.id === item.id) || PLANT_CATALOG[0];
@@ -980,7 +988,8 @@ export class MeadowScene {
     const mat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
-      alphaTest: 0.25,
+      alphaTest: 0.08,
+      premultipliedAlpha: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
@@ -1049,28 +1058,65 @@ export class MeadowScene {
     this.dirtHoles.push({ mesh, age: 0, maxAge: 0.95 });
   }
 
+  private computeResponsiveFov(aspect: number): number {
+    if (aspect < 1) {
+      return Math.min(62, 38 * Math.pow(1 / Math.max(0.44, aspect), 0.43));
+    }
+    return 38;
+  }
+
+  private applyCameraTargetsForScreen(screen: GameScreen) {
+    const portraitBoost = this.currentAspect < 1 ? Math.min(3.5, (1 - this.currentAspect) * 5.6) : 0;
+
+    if (screen === 'title') {
+      this.cameraPosTarget.set(0, 6.2 + portraitBoost * 0.45, 11.4 + portraitBoost * 0.9);
+      this.cameraLookTarget.set(0, 1.35, -3.5);
+    } else if (screen === 'playing') {
+      this.cameraPosTarget.set(0, 8.6 + portraitBoost * 0.8, 8.8 + portraitBoost * 1.15);
+      this.cameraLookTarget.set(0, 0.2, -1.25);
+    } else if (screen === 'gameover') {
+      this.cameraPosTarget.set(0, 6.8 + portraitBoost * 0.4, 10.6 + portraitBoost * 0.8);
+      this.cameraLookTarget.set(0, 1.0, -3.0);
+    }
+  }
+
+  private getSpawnBounds() {
+    if (this.currentAspect < 0.75) {
+      return {
+        ...YARD_BOUNDS,
+        minX: -2.45,
+        maxX: 2.45,
+      };
+    }
+    if (this.currentAspect < 1) {
+      return {
+        ...YARD_BOUNDS,
+        minX: -3.2,
+        maxX: 3.2,
+      };
+    }
+    return YARD_BOUNDS;
+  }
+
   public setScreen(screen: GameScreen) {
     const previous = this.currentScreen;
     this.currentScreen = screen;
 
     if (screen === 'title') {
-      this.cameraPosTarget.set(0, 6.2, 11.4);
-      this.cameraLookTarget.set(0, 1.35, -3.5);
+      this.applyCameraTargetsForScreen('title');
       if (previous !== 'title') {
         this.spawnTitleShowcasePlants();
       }
       this.renderer.domElement.style.cursor = 'default';
     } else if (screen === 'playing') {
-      this.cameraPosTarget.set(0, 8.6, 8.8);
-      this.cameraLookTarget.set(0, 0.2, -1.35);
+      this.applyCameraTargetsForScreen('playing');
       if (previous === 'title' || previous === 'gameover') {
-        this.startNewExamRound();
+        this.startNewExamRound(this.roundDuration);
       }
     } else if (screen === 'paused') {
       this.renderer.domElement.style.cursor = 'default';
     } else if (screen === 'gameover') {
-      this.cameraPosTarget.set(0, 6.8, 10.6);
-      this.cameraLookTarget.set(0, 1.0, -3.0);
+      this.applyCameraTargetsForScreen('gameover');
       this.renderer.domElement.style.cursor = 'default';
     }
     if (this.isSoftwareGl) {
@@ -1087,17 +1133,20 @@ export class MeadowScene {
     }
   }
 
-  public startNewExamRound() {
-    this.examRemaining = EXAM_DURATION_SECONDS;
+  public startNewExamRound(durationSeconds = EXAM_DURATION_SECONDS) {
+    this.roundDuration = durationSeconds;
+    this.examRemaining = durationSeconds;
     this.examElapsed = 0;
-    this.lastReportedSecond = EXAM_DURATION_SECONDS;
+    this.lastReportedSecond = durationSeconds;
     this.spawnCooldown = 0;
     this.clearPlants();
 
     // Seed initial 7 plants right away inside yard
+    const bounds = this.getSpawnBounds();
+    const minDist = this.currentAspect < 0.75 ? 1.18 : 1.45;
     for (let i = 0; i < 7; i++) {
       const existing = this.activePlants.map((p) => ({ x: p.x, z: p.z }));
-      const pos = findOpenSpawnPosition(existing, YARD_BOUNDS, 1.5);
+      const pos = findOpenSpawnPosition(existing, bounds, minDist);
       if (!pos) break;
       const def = pickRandomPlant(i < 5 ? 0.85 : 0.45);
       this.spawnPlant(def, pos.x, pos.z, 7.5 + Math.random() * 4);
@@ -1188,8 +1237,11 @@ export class MeadowScene {
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
     if (width <= 0 || height <= 0) return;
-    this.camera.aspect = width / height;
+    this.currentAspect = width / height;
+    this.camera.aspect = this.currentAspect;
+    this.camera.fov = this.computeResponsiveFov(this.currentAspect);
     this.camera.updateProjectionMatrix();
+    this.applyCameraTargetsForScreen(this.currentScreen);
     this.renderer.setSize(width, height);
     this.renderer.render(this.scene, this.camera);
   }
@@ -1223,11 +1275,15 @@ export class MeadowScene {
         this.callbacksRef.current.onExamFinished();
       } else {
         this.spawnCooldown -= dt;
-        const { targetCount, weedProbability } = getTargetPlantBudget(this.examElapsed);
+        const { targetCount, weedProbability } = getTargetPlantBudget(
+          this.examElapsed,
+          this.roundDuration,
+        );
         const aliveCount = this.activePlants.filter((p) => !p.pulling).length;
         if (aliveCount < targetCount && this.spawnCooldown <= 0) {
           const existing = this.activePlants.map((p) => ({ x: p.x, z: p.z }));
-          const pos = findOpenSpawnPosition(existing, YARD_BOUNDS, 1.38);
+          const minDist = this.currentAspect < 0.75 ? 1.15 : 1.35;
+          const pos = findOpenSpawnPosition(existing, this.getSpawnBounds(), minDist);
           if (pos) {
             // Ensure at least 55% of active field is weeds so player never gets starved of targets
             const activeWeeds = this.activePlants.filter((p) => !p.pulling && p.def.isWeed).length;
@@ -1325,9 +1381,10 @@ export class MeadowScene {
       }
     }
 
-    // Update 2D billboarded characters (Usagi, Chiikawa, Hachiware)
+    // Update 2D billboarded characters (stand upright so heads never lean backward into fence)
+    _charQuat.copy(_standQuat).slerp(this.camera.quaternion, 0.35);
     for (const ch of this.characters) {
-      ch.billboard.quaternion.copy(this.camera.quaternion);
+      ch.billboard.quaternion.copy(_charQuat);
 
       if (ch.happyTimer > 0) {
         ch.happyTimer = Math.max(0, ch.happyTimer - dt);
@@ -1443,7 +1500,7 @@ export class MeadowScene {
     if (this.disposed || this.modalPaused) return;
     const rawDt = this.clock.getDelta();
     const dt = Math.min(rawDt, 0.05);
-    const timerDt = Math.min(rawDt, 0.25);
+    const timerDt = Math.min(rawDt, 1.0);
     const elapsed = this.clock.elapsedTime;
 
     if (this.currentScreen !== 'paused') {

@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidRankingEntry(data) {
+      return data.keys().hasAll([
+          'playerName',
+          'score',
+          'pulledWeeds',
+          'maxCombo',
+          'mistakes',
+          'durationSeconds',
+          'portraitId',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'playerName',
+          'score',
+          'pulledWeeds',
+          'maxCombo',
+          'mistakes',
+          'durationSeconds',
+          'portraitId',
+          'createdAt',
+          'uid'
+        ])
+        && data.playerName is string
+        && data.playerName.size() >= 1
+        && data.playerName.size() <= 12
+        && data.score is int
+        && data.score >= 0
+        && data.score <= 300
+        && data.pulledWeeds is int
+        && data.pulledWeeds >= 0
+        && data.pulledWeeds <= 300
+        && data.maxCombo is int
+        && data.maxCombo >= 0
+        && data.maxCombo <= 300
+        && data.mistakes is int
+        && data.mistakes >= 0
+        && data.mistakes <= 300
+        && data.durationSeconds is int
+        && data.durationSeconds == 30
+        && data.portraitId is string
+        && data.portraitId in ['chiikawa', 'hachiware', 'usagi', 'camera']
+        && data.createdAt == request.time
+        && (!('uid' in data) || (request.auth != null && data.uid is string && data.uid == request.auth.uid));
+    }
+
+    // 30-second weeding challenge leaderboard (non-PII public game scores)
+    match /rankings/{entryId} {
+      allow get: if isValidId(entryId) && resource.data.score >= 0 && resource.data.score <= 300;
+      allow list: if resource.data.score >= 0 && resource.data.score <= 300;
+      allow create: if isValidId(entryId) && isValidRankingEntry(incoming());
+      allow update, delete: if false;
+    }
+  }
+}

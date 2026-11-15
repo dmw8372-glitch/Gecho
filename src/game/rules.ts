@@ -1,8 +1,12 @@
 export type GameScreen = 'title' | 'playing' | 'paused' | 'gameover';
 
+export type GameMode = 'exam' | 'ranking';
+
 export type WeedingGrade = 1 | 2 | 3 | 4 | 5;
 
 export type CharacterId = 'chiikawa' | 'hachiware' | 'usagi';
+
+export type PortraitChoice = CharacterId | 'camera';
 
 export interface PlantDefinition {
   id: string;
@@ -14,14 +18,17 @@ export interface PlantDefinition {
 }
 
 export const EXAM_DURATION_SECONDS = 15;
+export const RANKING_DURATION_SECONDS = 30;
+export const MAX_PLAYER_NAME_LENGTH = 12;
 
 export const YARD_BOUNDS = {
   minX: -5.2,
   maxX: 5.2,
-  minZ: -2.65,
+  minZ: -2.4,
   maxZ: 3.35,
 };
 
+// All 9 plants from the user's updated plant sheet
 export const PLANT_CATALOG: PlantDefinition[] = [
   // Weeds (+1)
   {
@@ -29,64 +36,24 @@ export const PLANT_CATALOG: PlantDefinition[] = [
     label: '톱니잎 잡초',
     isWeed: true,
     sprite: '/assets/sprites/weed_buds_lg.png',
-    worldWidth: 1.55,
-    worldHeight: 1.25,
-  },
-  {
-    id: 'weed_toothed_buds_sm',
-    label: '톱니잎 잡초',
-    isWeed: true,
-    sprite: '/assets/sprites/weed_buds_sm.png',
-    worldWidth: 1.25,
-    worldHeight: 1.15,
-  },
-  {
-    id: 'weed_toothed_1',
-    label: '톱니잎 잡초',
-    isWeed: true,
-    sprite: '/assets/sprites/weed_toothed_1.png',
-    worldWidth: 1.3,
-    worldHeight: 1.05,
-  },
-  {
-    id: 'weed_toothed_2',
-    label: '톱니잎 잡초',
-    isWeed: true,
-    sprite: '/assets/sprites/weed_toothed_2.png',
-    worldWidth: 1.5,
-    worldHeight: 1.2,
-  },
-  {
-    id: 'weed_clump',
-    label: '뭉치 잡초',
-    isWeed: true,
-    sprite: '/assets/sprites/weed_clump.png',
-    worldWidth: 1.25,
-    worldHeight: 0.92,
-  },
-  {
-    id: 'weed_clump_sm',
-    label: '뭉치 잡초',
-    isWeed: true,
-    sprite: '/assets/sprites/weed_clump_sm.png',
-    worldWidth: 1.1,
-    worldHeight: 0.82,
+    worldWidth: 1.56,
+    worldHeight: 1.44,
   },
   {
     id: 'weed_long_lg',
     label: '길쭉 잡초',
     isWeed: true,
     sprite: '/assets/sprites/weed_long_lg.png',
-    worldWidth: 1.5,
-    worldHeight: 1.18,
+    worldWidth: 1.62,
+    worldHeight: 1.08,
   },
   {
-    id: 'weed_long_s1',
-    label: '길쭉 잡초',
+    id: 'weed_clump',
+    label: '뭉치 잡초',
     isWeed: true,
-    sprite: '/assets/sprites/weed_long_s1.png',
-    worldWidth: 1.65,
-    worldHeight: 1.15,
+    sprite: '/assets/sprites/weed_clump.png',
+    worldWidth: 1.32,
+    worldHeight: 1.02,
   },
   // Protected plants (-1)
   {
@@ -94,48 +61,48 @@ export const PLANT_CATALOG: PlantDefinition[] = [
     label: '노란술 꽃',
     isWeed: false,
     sprite: '/assets/sprites/flower_yellow.png',
-    worldWidth: 0.98,
+    worldWidth: 0.94,
     worldHeight: 1.48,
-  },
-  {
-    id: 'flower_white',
-    label: '하얀 꽃',
-    isWeed: false,
-    sprite: '/assets/sprites/flower_white.png',
-    worldWidth: 0.95,
-    worldHeight: 1.42,
   },
   {
     id: 'flower_cluster',
     label: '꽃무더기',
     isWeed: false,
     sprite: '/assets/sprites/flower_cluster.png',
-    worldWidth: 1.38,
-    worldHeight: 1.42,
+    worldWidth: 1.24,
+    worldHeight: 1.46,
   },
   {
     id: 'veg_cabbage',
     label: '양배추',
     isWeed: false,
     sprite: '/assets/sprites/veg_cabbage.png',
-    worldWidth: 1.38,
-    worldHeight: 1.15,
+    worldWidth: 1.36,
+    worldHeight: 1.12,
+  },
+  {
+    id: 'flower_white',
+    label: '하얀 꽃',
+    isWeed: false,
+    sprite: '/assets/sprites/flower_white.png',
+    worldWidth: 0.84,
+    worldHeight: 1.44,
   },
   {
     id: 'veg_carrot',
     label: '당근',
     isWeed: false,
     sprite: '/assets/sprites/plant_carrot_s2.png',
-    worldWidth: 1.15,
-    worldHeight: 1.38,
+    worldWidth: 1.18,
+    worldHeight: 1.42,
   },
   {
-    id: 'veg_strawberry',
-    label: '딸기',
+    id: 'veg_clover',
+    label: '클로버',
     isWeed: false,
     sprite: '/assets/sprites/plant_clover.png',
-    worldWidth: 1.18,
-    worldHeight: 0.96,
+    worldWidth: 1.28,
+    worldHeight: 0.98,
   },
 ];
 
@@ -151,7 +118,7 @@ export const STUDY_PROTECTED_ITEMS = [
   { label: '양배추', sprite: '/assets/sprites/veg_cabbage.png' },
   { label: '하얀 꽃', sprite: '/assets/sprites/flower_white.png' },
   { label: '당근', sprite: '/assets/sprites/plant_carrot_s2.png' },
-  { label: '딸기', sprite: '/assets/sprites/plant_clover.png' },
+  { label: '클로버', sprite: '/assets/sprites/plant_clover.png' },
 ];
 
 export const GRADE_CERTIFICATES: Record<
@@ -230,6 +197,18 @@ export interface ExamStats {
   pulledWeeds: number;
 }
 
+export interface RankingRecord {
+  id: string;
+  playerName: string;
+  score: number;
+  pulledWeeds: number;
+  maxCombo: number;
+  mistakes: number;
+  durationSeconds: number;
+  portraitId: PortraitChoice;
+  createdAtMs: number;
+}
+
 export function createInitialExamStats(): ExamStats {
   return {
     score: 0,
@@ -238,6 +217,10 @@ export function createInitialExamStats(): ExamStats {
     mistakes: 0,
     pulledWeeds: 0,
   };
+}
+
+export function getModeDuration(mode: GameMode): number {
+  return mode === 'ranking' ? RANKING_DURATION_SECONDS : EXAM_DURATION_SECONDS;
 }
 
 export function computeGrade(score: number): WeedingGrade {
@@ -293,13 +276,18 @@ export function applyPlantPull(stats: ExamStats, isWeed: boolean): {
   };
 }
 
-export function getTargetPlantBudget(elapsedSeconds: number): {
+export function getTargetPlantBudget(
+  elapsedSeconds: number,
+  durationSeconds = EXAM_DURATION_SECONDS,
+): {
   targetCount: number;
   weedProbability: number;
 } {
-  const ratio = Math.max(0, Math.min(1, elapsedSeconds / EXAM_DURATION_SECONDS));
-  const targetCount = Math.round(7 + ratio * 5); // 7 -> 12 active plants
-  const weedProbability = 0.74 - ratio * 0.08; // 74% -> 66% weeds
+  const safeDuration = Math.max(1, durationSeconds);
+  const ratio = Math.max(0, Math.min(1, elapsedSeconds / safeDuration));
+  const maxActive = durationSeconds >= RANKING_DURATION_SECONDS ? 13 : 12;
+  const targetCount = Math.round(7 + ratio * (maxActive - 7));
+  const weedProbability = 0.74 - ratio * 0.08;
   return { targetCount, weedProbability };
 }
 
@@ -347,13 +335,30 @@ export function findOpenSpawnPosition(
   return bestMinDist > 0.65 * 0.65 ? bestCandidate : null;
 }
 
-export function getTimerDisplay(remainingSeconds: number): {
+export function getTimerDisplay(
+  remainingSeconds: number,
+  durationSeconds = EXAM_DURATION_SECONDS,
+): {
   displaySeconds: number;
   progress: number;
 } {
-  const clamped = Math.max(0, Math.min(EXAM_DURATION_SECONDS, remainingSeconds));
+  const safeDuration = Math.max(1, durationSeconds);
+  const clamped = Math.max(0, Math.min(safeDuration, remainingSeconds));
   return {
     displaySeconds: Math.ceil(clamped),
-    progress: clamped / EXAM_DURATION_SECONDS,
+    progress: clamped / safeDuration,
   };
+}
+
+export function sanitizePlayerName(raw: string): string {
+  return raw.replace(/\s+/g, ' ').trim().slice(0, MAX_PLAYER_NAME_LENGTH);
+}
+
+export function sortRankingRecords(records: RankingRecord[]): RankingRecord[] {
+  return [...records].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.pulledWeeds !== a.pulledWeeds) return b.pulledWeeds - a.pulledWeeds;
+    if (a.mistakes !== b.mistakes) return a.mistakes - b.mistakes;
+    return a.createdAtMs - b.createdAtMs;
+  });
 }

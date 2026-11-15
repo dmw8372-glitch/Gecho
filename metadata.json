@@ -1,6 +1,6 @@
 {
   "name": "제초 자격증 시험",
   "description": "치이카와, 하치와레, 우사기와 함께하는 3D 잡초 뽑기 제초 자격증 시험 게임",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
