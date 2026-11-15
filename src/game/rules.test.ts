@@ -123,8 +123,10 @@ test('getTimerDisplay, getModeDuration, and weed budgets exceed 1급 requirement
   const startBudget = getTargetPlantBudget(0, EXAM_DURATION_SECONDS);
   const rankingEndBudget = getTargetPlantBudget(30, RANKING_DURATION_SECONDS);
   assert.equal(startBudget.targetCount, 10);
-  assert.equal(startBudget.minActiveWeeds, 8);
-  assert.equal(rankingEndBudget.targetCount, 16);
+  assert.equal(startBudget.minActiveWeeds, 5);
+  assert.equal(startBudget.maxProtectedActive, 5);
+  assert.equal(startBudget.weedProbability, 0.5);
+  assert.equal(rankingEndBudget.targetCount, 14);
 
   const examTotalWeeds = getMinimumCumulativeWeeds(EXAM_DURATION_SECONDS, EXAM_DURATION_SECONDS);
   const rankingTotalWeeds = getMinimumCumulativeWeeds(RANKING_DURATION_SECONDS, RANKING_DURATION_SECONDS);

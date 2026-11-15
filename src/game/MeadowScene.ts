@@ -1088,9 +1088,10 @@ export class MeadowScene {
   private getSpawnBounds() {
     if (this.currentAspect < 0.75) {
       return {
-        ...YARD_BOUNDS,
-        minX: -2.45,
-        maxX: 2.45,
+        minX: -2.25,
+        maxX: 2.25,
+        minZ: -2.2,
+        maxZ: 5.55,
       };
     }
     if (this.currentAspect < 1) {
@@ -1098,6 +1099,7 @@ export class MeadowScene {
         ...YARD_BOUNDS,
         minX: -3.2,
         maxX: 3.2,
+        maxZ: 4.5,
       };
     }
     return YARD_BOUNDS;
@@ -1147,14 +1149,14 @@ export class MeadowScene {
     this.totalWeedsSpawned = 0;
     this.clearPlants();
 
-    // Seed initial 10 plants right away (8 guaranteed weeds + 2 protected) so 1급 pace starts immediately
+    // Seed initial 10 plants right away: exact 5 weeds + 5 protected plants (50/50)
     const bounds = this.getSpawnBounds();
-    const minDist = this.currentAspect < 0.75 ? 0.96 : 1.35;
+    const minDist = this.currentAspect < 0.75 ? 1.55 : 1.45;
     for (let i = 0; i < 10; i++) {
       const existing = this.activePlants.map((p) => ({ x: p.x, z: p.z }));
       const pos = findOpenSpawnPosition(existing, bounds, minDist);
       if (!pos) break;
-      const isInitialWeed = i < 8;
+      const isInitialWeed = i % 2 === 0;
       const def = pickRandomPlant(isInitialWeed ? 1.0 : 0.0);
       this.spawnPlant(def, pos.x, pos.z, isInitialWeed ? 10.5 : 4.2 + Math.random() * 1.2, true);
     }
@@ -1296,22 +1298,25 @@ export class MeadowScene {
           else activeProtected++;
         }
 
-        const behindWeedQuota = this.totalWeedsSpawned < minCumulativeWeeds;
+        const behindWeedQuota = this.totalWeedsSpawned < minCumulativeWeeds && activeWeeds <= activeProtected;
         const needWeed = activeWeeds < budget.minActiveWeeds || behindWeedQuota;
-        const maxFieldSlots = needWeed ? 16 : budget.targetCount;
+        const maxFieldSlots = needWeed ? Math.max(budget.targetCount, 13) : budget.targetCount;
 
         if (aliveCount < maxFieldSlots && this.spawnCooldown <= 0) {
           const existing = this.activePlants.map((p) => ({ x: p.x, z: p.z }));
-          const minDist = this.currentAspect < 0.75 ? 0.95 : 1.25;
+          const minDist = this.currentAspect < 0.75 ? 1.55 : 1.45;
           const pos = findOpenSpawnPosition(existing, this.getSpawnBounds(), minDist);
           if (pos) {
             const mustSpawnWeed = needWeed || activeProtected >= budget.maxProtectedActive;
-            const def = pickRandomPlant(mustSpawnWeed ? 1.0 : budget.weedProbability);
+            const mustSpawnProtected =
+              !mustSpawnWeed && activeProtected < budget.minActiveWeeds && activeWeeds > activeProtected;
+            const prob = mustSpawnWeed ? 1.0 : mustSpawnProtected ? 0.0 : budget.weedProbability;
+            const def = pickRandomPlant(prob);
             this.spawnPlant(
               def,
               pos.x,
               pos.z,
-              def.isWeed ? 10.5 : 3.8 + Math.random() * 1.1,
+              def.isWeed ? 10.5 : 4.0 + Math.random() * 1.1,
             );
           }
           this.spawnCooldown = needWeed ? 0.055 : 0.1;

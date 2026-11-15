@@ -287,11 +287,12 @@ export function getTargetPlantBudget(
 } {
   const safeDuration = Math.max(1, durationSeconds);
   const ratio = Math.max(0, Math.min(1, elapsedSeconds / safeDuration));
-  const maxActive = durationSeconds >= RANKING_DURATION_SECONDS ? 16 : 14;
+  const maxActive = durationSeconds >= RANKING_DURATION_SECONDS ? 14 : 12;
   const targetCount = Math.round(10 + ratio * (maxActive - 10));
-  const minActiveWeeds = Math.min(10, Math.round(8 + ratio * 2));
-  const maxProtectedActive = 4;
-  const weedProbability = 0.78 - ratio * 0.06;
+  const half = Math.ceil(targetCount / 2);
+  const minActiveWeeds = Math.floor(targetCount / 2);
+  const maxProtectedActive = half;
+  const weedProbability = 0.5;
   return { targetCount, minActiveWeeds, maxProtectedActive, weedProbability };
 }
 
@@ -300,8 +301,8 @@ export function getMinimumCumulativeWeeds(
   durationSeconds = EXAM_DURATION_SECONDS,
 ): number {
   const clampedElapsed = Math.max(0, Math.min(durationSeconds, elapsedSeconds));
-  const weedsPerSecond = durationSeconds >= RANKING_DURATION_SECONDS ? 2.6 : 2.5;
-  return 8 + Math.floor(clampedElapsed * weedsPerSecond);
+  const weedsPerSecond = durationSeconds >= RANKING_DURATION_SECONDS ? 2.5 : 2.4;
+  return 5 + Math.floor(clampedElapsed * weedsPerSecond);
 }
 
 export function pickRandomPlant(
@@ -322,9 +323,11 @@ export function findOpenSpawnPosition(
   rng: () => number = Math.random,
 ): { x: number; z: number } | null {
   let bestCandidate: { x: number; z: number } | null = null;
-  let bestMinDist = -1;
+  let bestMinDistSq = -1;
+  const minSpacingSq = minSpacing * minSpacing;
+  const attempts = existing.length === 0 ? 1 : 28;
 
-  for (let attempt = 0; attempt < 28; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const x = bounds.minX + rng() * (bounds.maxX - bounds.minX);
     const z = bounds.minZ + rng() * (bounds.maxZ - bounds.minZ);
 
@@ -336,16 +339,14 @@ export function findOpenSpawnPosition(
       if (dSq < closestSq) closestSq = dSq;
     }
 
-    if (closestSq >= minSpacing * minSpacing) {
-      return { x, z };
-    }
-    if (closestSq > bestMinDist) {
-      bestMinDist = closestSq;
+    if (closestSq > bestMinDistSq) {
+      bestMinDistSq = closestSq;
       bestCandidate = { x, z };
     }
   }
 
-  return bestMinDist > 0.52 * 0.52 ? bestCandidate : null;
+  if (existing.length === 0) return bestCandidate;
+  return bestMinDistSq >= Math.min(minSpacingSq, 0.52 * 0.52) ? bestCandidate : null;
 }
 
 export function getTimerDisplay(
