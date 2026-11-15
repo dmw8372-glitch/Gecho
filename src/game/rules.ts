@@ -135,7 +135,7 @@ export const GRADE_CERTIFICATES: Record<
     grade: 1,
     label: '1급',
     sprite: '/assets/sprites/cert_1.png',
-    minScore: 60,
+    minScore: 55,
     shimmerTier: 'rainbow',
   },
   2: {

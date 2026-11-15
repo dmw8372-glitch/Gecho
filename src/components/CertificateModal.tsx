@@ -88,8 +88,8 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     const nx = (e.clientX - rect.left) / rect.width - 0.5;
     const ny = (e.clientY - rect.top) / rect.height - 0.5;
     setTilt({
-      rx: -ny * 10,
-      ry: nx * 12,
+      rx: -ny * 24,
+      ry: nx * 28,
     });
   };
 
@@ -253,8 +253,8 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             onPointerLeave={handlePointerLeave}
             className="relative w-[min(360px,84vw)] select-none sm:w-[min(430px,86vw)]"
             style={{
-              transform: `perspective(900px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
-              transition: 'transform 160ms ease-out',
+              transform: `perspective(750px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
+              transition: 'transform 120ms ease-out',
             }}
           >
           <img

@@ -22,7 +22,7 @@ import {
   toPlayerRankingDocId,
 } from './rules';
 
-test('computeGrade matches 60+ threshold for 1급', () => {
+test('computeGrade matches 55+ threshold for 1급', () => {
   assert.equal(computeGrade(0), 5);
   assert.equal(computeGrade(7), 5);
   assert.equal(computeGrade(8), 4);
@@ -30,8 +30,8 @@ test('computeGrade matches 60+ threshold for 1급', () => {
   assert.equal(computeGrade(20), 3);
   assert.equal(computeGrade(37), 3);
   assert.equal(computeGrade(38), 2);
-  assert.equal(computeGrade(59), 2);
-  assert.equal(computeGrade(60), 1);
+  assert.equal(computeGrade(54), 2);
+  assert.equal(computeGrade(55), 1);
   assert.equal(computeGrade(85), 1);
 });
 
