@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CertificateModal } from './components/CertificateModal';
+import { LegalModal, LegalTab } from './components/LegalModal';
 import { PauseModal } from './components/PauseModal';
 import { FloatingFeedback, PlayingHud } from './components/PlayingHud';
 import { RankingModal } from './components/RankingModal';
@@ -37,6 +38,7 @@ export default function App() {
   });
   const [studyOpen, setStudyOpen] = useState(false);
   const [rankingOpen, setRankingOpen] = useState(false);
+  const [legalTab, setLegalTab] = useState<LegalTab | null>(null);
   const [muted, setMuted] = useState(false);
   const [stats, setStats] = useState<ExamStats>(createInitialExamStats);
   const [remainingSeconds, setRemainingSeconds] = useState(EXAM_DURATION_SECONDS);
@@ -159,6 +161,7 @@ export default function App() {
     setRankingSavedId(null);
     setStudyOpen(false);
     setRankingOpen(false);
+    setLegalTab(null);
     setScreen('playing');
 
     sceneRef.current?.startNewExamRound(duration);
@@ -218,9 +221,9 @@ export default function App() {
   // Pause background 3D loop while modal overlays cover the viewport
   useEffect(() => {
     sceneRef.current?.setModalOpen(
-      studyOpen || rankingOpen || screen === 'gameover' || screen === 'paused',
+      studyOpen || rankingOpen || legalTab !== null || screen === 'gameover' || screen === 'paused',
     );
-  }, [studyOpen, rankingOpen, screen]);
+  }, [legalTab, studyOpen, rankingOpen, screen]);
 
   // Mount Three.js scene once
   useEffect(() => {
@@ -253,6 +256,10 @@ export default function App() {
   // Global keyboard shortcuts (Enter/Space to start, Escape/P to pause/resume)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (legalTab !== null) {
+        if (e.key === 'Escape') setLegalTab(null);
+        return;
+      }
       if (studyOpen) {
         if (e.key === 'Escape') setStudyOpen(false);
         return;
@@ -275,7 +282,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pauseExam, rankingOpen, resumeExam, startExam, studyOpen]);
+  }, [legalTab, pauseExam, rankingOpen, resumeExam, startExam, studyOpen]);
 
   const currentGrade = computeGrade(stats.score);
   const activeDuration = getModeDuration(mode);
@@ -289,7 +296,7 @@ export default function App() {
         className="absolute inset-0 h-full w-full"
       />
 
-      {screen === 'title' && !studyOpen && !rankingOpen && (
+      {screen === 'title' && !studyOpen && !rankingOpen && !legalTab && (
         <TitleOverlay
           muted={muted}
           onToggleMute={toggleMute}
@@ -302,6 +309,10 @@ export default function App() {
             setRankingOpen(true);
           }}
           onStartExam={startExam}
+          onOpenLegal={(tab) => {
+            soundFx.playClick();
+            setLegalTab(tab);
+          }}
         />
       )}
 
@@ -375,6 +386,16 @@ export default function App() {
           onClose={() => {
             soundFx.playClick();
             setRankingOpen(false);
+          }}
+        />
+      )}
+
+      {legalTab && (
+        <LegalModal
+          initialTab={legalTab}
+          onClose={() => {
+            soundFx.playClick();
+            setLegalTab(null);
           }}
         />
       )}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { BookOpen, Trophy } from 'lucide-react';
+import type { LegalTab } from './LegalModal';
 import { SoundButton } from './SoundButton';
 
 interface TitleOverlayProps {
@@ -8,6 +9,7 @@ interface TitleOverlayProps {
   onOpenStudy: () => void;
   onOpenRanking: () => void;
   onStartExam: () => void;
+  onOpenLegal: (tab: LegalTab) => void;
 }
 
 export const TitleOverlay: React.FC<TitleOverlayProps> = ({
@@ -16,9 +18,10 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
   onOpenStudy,
   onOpenRanking,
   onStartExam,
+  onOpenLegal,
 }) => {
   return (
-    <div className="pointer-events-none fixed inset-0 z-10 flex flex-col justify-between px-4 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-7">
+    <div className="pointer-events-none fixed inset-0 z-10 flex flex-col justify-between px-4 pt-4 pb-[max(0.6rem,env(safe-area-inset-bottom))] sm:px-7 sm:pt-7 sm:pb-4">
       {/* Top bar: only top-right sound button (matching IMG_1421) */}
       <div className="flex items-start justify-end">
         <SoundButton muted={muted} onToggle={onToggleMute} />
@@ -58,35 +61,60 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
         </h1>
       </div>
 
-      {/* Bottom CTA row: 제초 공부 + 랭킹표 + 시험 보러 가기 → */}
-      <div className="pointer-events-auto mb-2 flex flex-wrap items-center justify-center gap-2.5 sm:mb-6 sm:gap-4">
-        <button
-          type="button"
-          onClick={onOpenStudy}
-          className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#b4dc9c] px-4 py-2.5 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2.5 sm:px-6 sm:py-3 sm:text-2xl"
-        >
-          <BookOpen className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.5} />
-          <span>제초 공부</span>
-        </button>
+      {/* Bottom CTA row + ultra-subtle muted copyright/privacy micro-footer */}
+      <div className="flex flex-col items-center">
+        <div className="pointer-events-auto mb-2.5 flex flex-wrap items-center justify-center gap-2.5 sm:mb-4 sm:gap-4">
+          <button
+            type="button"
+            onClick={onOpenStudy}
+            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#b4dc9c] px-4 py-2.5 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2.5 sm:px-6 sm:py-3 sm:text-2xl"
+          >
+            <BookOpen className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.5} />
+            <span>제초 공부</span>
+          </button>
 
-        <button
-          type="button"
-          onClick={onOpenRanking}
-          className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fbf9f1] px-4 py-2.5 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-3 sm:text-2xl"
-        >
-          <Trophy className="h-4 w-4 text-[#e09f1f] sm:h-5 sm:w-5" strokeWidth={2.5} />
-          <span>랭킹표</span>
-        </button>
+          <button
+            type="button"
+            onClick={onOpenRanking}
+            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fbf9f1] px-4 py-2.5 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-3 sm:text-2xl"
+          >
+            <Trophy className="h-4 w-4 text-[#e09f1f] sm:h-5 sm:w-5" strokeWidth={2.5} />
+            <span>랭킹표</span>
+          </button>
 
-        <button
-          type="button"
-          data-start="true"
-          onClick={onStartExam}
-          className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fdd64c] px-5 py-2.5 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2.5 sm:px-7 sm:py-3 sm:text-2xl"
+          <button
+            type="button"
+            data-start="true"
+            onClick={onStartExam}
+            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fdd64c] px-5 py-2.5 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2.5 sm:px-7 sm:py-3 sm:text-2xl"
+          >
+            <span>시험 보러 가기</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+
+        <footer
+          aria-label="저작권 및 개인정보 고지"
+          className="pointer-events-auto flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-center font-sans text-[10px] leading-tight text-[#52584d]/55 sm:text-[11px]"
         >
-          <span>시험 보러 가기</span>
-          <span aria-hidden="true">→</span>
-        </button>
+          <span>비영리 팬 게임 · 치이카와 AI 재창작 리소스 · 상업적 이용 금지</span>
+          <span aria-hidden="true">|</span>
+          <button
+            type="button"
+            onClick={() => onOpenLegal('copyright')}
+            className="cursor-pointer underline decoration-[#52584d]/35 underline-offset-2 transition-colors hover:text-[#342f2a]/85"
+          >
+            저작권 안내
+          </button>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            onClick={() => onOpenLegal('privacy')}
+            className="cursor-pointer underline decoration-[#52584d]/35 underline-offset-2 transition-colors hover:text-[#342f2a]/85"
+          >
+            개인정보 처리방침
+          </button>
+        </footer>
       </div>
     </div>
   );
