@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CertificateModal } from './components/CertificateModal';
 import { LegalModal, LegalTab } from './components/LegalModal';
+import { LoadingScreen } from './components/LoadingScreen';
 import { PauseModal } from './components/PauseModal';
 import { FloatingFeedback, PlayingHud } from './components/PlayingHud';
 import { RankingModal } from './components/RankingModal';
@@ -45,6 +46,9 @@ export default function App() {
   const [feedbacks, setFeedbacks] = useState<FloatingFeedback[]>([]);
   const [rankingSaving, setRankingSaving] = useState(false);
   const [rankingSavedId, setRankingSavedId] = useState<string | null>(null);
+  const [loadProgress, setLoadProgress] = useState(0);
+  const [loadFadingOut, setLoadFadingOut] = useState(false);
+  const [showLoader, setShowLoader] = useState(true);
 
   const statsRef = useRef<ExamStats>(stats);
   statsRef.current = stats;
@@ -55,16 +59,26 @@ export default function App() {
   const playerNameRef = useRef<string>(playerName);
   playerNameRef.current = playerName;
   const portraitChoiceRef = useRef<PortraitChoice>('chiikawa');
+  const showLoaderRef = useRef<boolean>(showLoader);
+  showLoaderRef.current = showLoader;
 
   const feedbackIdRef = useRef(1);
+  const feedbackTimersRef = useRef<Set<number>>(new Set());
   const lastSecondRef = useRef(EXAM_DURATION_SECONDS);
+
+  const clearFeedbackTimers = useCallback(() => {
+    feedbackTimersRef.current.forEach((t) => window.clearTimeout(t));
+    feedbackTimersRef.current.clear();
+  }, []);
 
   const pushFeedback = useCallback((fb: Omit<FloatingFeedback, 'id'>) => {
     const id = feedbackIdRef.current++;
     setFeedbacks((prev) => [...prev.slice(-8), { ...fb, id }]);
-    window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
+      feedbackTimersRef.current.delete(timer);
       setFeedbacks((prev) => prev.filter((item) => item.id !== id));
     }, 740);
+    feedbackTimersRef.current.add(timer);
   }, []);
 
   const handlePlantPulled = useCallback(
@@ -156,6 +170,7 @@ export default function App() {
     setMode(targetMode);
     setStats(fresh);
     setRemainingSeconds(duration);
+    clearFeedbackTimers();
     setFeedbacks([]);
     setRankingSaving(false);
     setRankingSavedId(null);
@@ -166,7 +181,7 @@ export default function App() {
 
     sceneRef.current?.startNewExamRound(duration);
     sceneRef.current?.setScreen('playing');
-  }, []);
+  }, [clearFeedbackTimers]);
 
   const startExam = useCallback(() => {
     startRound('exam');
@@ -197,12 +212,13 @@ export default function App() {
     soundFx.playClick();
     setStudyOpen(false);
     setRankingOpen(false);
+    clearFeedbackTimers();
     setFeedbacks([]);
     setMode('exam');
     modeRef.current = 'exam';
     setScreen('title');
     sceneRef.current?.setScreen('title');
-  }, []);
+  }, [clearFeedbackTimers]);
 
   const toggleMute = useCallback(() => {
     setMuted((prev) => {
@@ -225,19 +241,39 @@ export default function App() {
     );
   }, [legalTab, studyOpen, rankingOpen, screen]);
 
-  // Mount Three.js scene once
+  // Mount Three.js scene once and coordinate initial asset preload screen
   useEffect(() => {
     if (!mountRef.current) return;
+    const mountStartMs = performance.now();
+    const params = new URLSearchParams(window.location.search);
+    const isAutostart = params.get('autostart') === '1';
+    let fadeStartTimer = 0;
+    let unmountTimer = 0;
+
     const meadow = new MeadowScene(mountRef.current, {
       onPlantPulled: handlePlantPulled,
       onTimerTick: handleTimerTick,
       onExamFinished: handleExamFinished,
+      onLoadProgress: (pct) => {
+        setLoadProgress((prev) => (pct > prev ? pct : prev));
+      },
+      onReady: () => {
+        setLoadProgress(100);
+        const minShowMs = isAutostart ? 0 : 380;
+        const elapsed = performance.now() - mountStartMs;
+        const waitMs = Math.max(0, minShowMs - elapsed);
+        fadeStartTimer = window.setTimeout(() => {
+          setLoadFadingOut(true);
+          unmountTimer = window.setTimeout(() => {
+            setShowLoader(false);
+          }, 440);
+        }, waitMs);
+      },
     });
     sceneRef.current = meadow;
 
     // Support ?autostart=1 to jump directly into active gameplay
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('autostart') === '1') {
+    if (isAutostart) {
       const fresh = createInitialExamStats();
       statsRef.current = fresh;
       setStats(fresh);
@@ -248,14 +284,18 @@ export default function App() {
     }
 
     return () => {
+      window.clearTimeout(fadeStartTimer);
+      window.clearTimeout(unmountTimer);
+      clearFeedbackTimers();
       meadow.dispose();
       sceneRef.current = null;
     };
-  }, [handleExamFinished, handlePlantPulled, handleTimerTick]);
+  }, [clearFeedbackTimers, handleExamFinished, handlePlantPulled, handleTimerTick]);
 
   // Global keyboard shortcuts (Enter/Space to start, Escape/P to pause/resume)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (showLoaderRef.current) return;
       if (legalTab !== null) {
         if (e.key === 'Escape') setLegalTab(null);
         return;
@@ -399,6 +439,8 @@ export default function App() {
           }}
         />
       )}
+
+      {showLoader && <LoadingScreen progress={loadProgress} fadingOut={loadFadingOut} />}
     </main>
   );
 }

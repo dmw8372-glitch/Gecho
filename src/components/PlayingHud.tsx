@@ -23,7 +23,7 @@ interface PlayingHudProps {
   onPause: () => void;
 }
 
-export const PlayingHud: React.FC<PlayingHudProps> = ({
+export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
   mode,
   playerName,
   durationSeconds,
@@ -178,4 +178,5 @@ export const PlayingHud: React.FC<PlayingHudProps> = ({
       </div>
     </div>
   );
-};
+});
+PlayingHud.displayName = 'PlayingHud';

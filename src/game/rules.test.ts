@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ALL_SCENE_SPRITES,
+  ALL_UI_SPRITES,
   EXAM_DURATION_SECONDS,
   GRADE_CERTIFICATES,
   PLANT_CATALOG,
@@ -84,6 +86,10 @@ test('PLANT_CATALOG contains exactly the 9 updated weeds and protected plants wi
     assert.ok(item.sprite.startsWith('/assets/sprites/'));
     assert.ok(item.worldWidth > 0 && item.worldHeight > 0);
   }
+  assert.equal(ALL_SCENE_SPRITES.length, 12);
+  assert.equal(ALL_UI_SPRITES.length, 5);
+  assert.equal(new Set(ALL_SCENE_SPRITES).size, 12);
+  assert.equal(new Set(ALL_UI_SPRITES).size, 5);
 });
 
 test('pickRandomPlant respects weed vs protected probability', () => {

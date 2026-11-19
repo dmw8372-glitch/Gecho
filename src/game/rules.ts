@@ -189,6 +189,20 @@ export const CHARACTER_PORTRAITS: Record<
   },
 };
 
+const WEED_PLANTS: PlantDefinition[] = PLANT_CATALOG.filter((p) => p.isWeed);
+const PROTECTED_PLANTS: PlantDefinition[] = PLANT_CATALOG.filter((p) => !p.isWeed);
+
+export const ALL_SCENE_SPRITES: string[] = Array.from(
+  new Set([
+    ...Object.values(CHARACTER_PORTRAITS).map((c) => c.sprite),
+    ...PLANT_CATALOG.map((p) => p.sprite),
+  ]),
+);
+
+export const ALL_UI_SPRITES: string[] = Array.from(
+  new Set(Object.values(GRADE_CERTIFICATES).map((c) => c.sprite)),
+);
+
 export interface ExamStats {
   score: number;
   combo: number;
@@ -309,9 +323,7 @@ export function pickRandomPlant(
   weedProbability: number,
   rng: () => number = Math.random,
 ): PlantDefinition {
-  const weeds = PLANT_CATALOG.filter((p) => p.isWeed);
-  const protectedPlants = PLANT_CATALOG.filter((p) => !p.isWeed);
-  const pool = rng() < weedProbability ? weeds : protectedPlants;
+  const pool = rng() < weedProbability ? WEED_PLANTS : PROTECTED_PLANTS;
   const idx = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
   return pool[idx];
 }

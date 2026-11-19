@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
+  ALL_SCENE_SPRITES,
+  ALL_UI_SPRITES,
   EXAM_DURATION_SECONDS,
   GameScreen,
   PLANT_CATALOG,
@@ -23,6 +25,8 @@ export interface MeadowSceneCallbacks {
   onPlantPulled: (event: PlantPullEvent) => void;
   onTimerTick: (remainingSeconds: number) => void;
   onExamFinished: () => void;
+  onLoadProgress?: (progress: number) => void;
+  onReady?: () => void;
 }
 
 interface ActivePlant {
@@ -32,11 +36,14 @@ interface ActivePlant {
   billboard: THREE.Mesh;
   hitMesh: THREE.Mesh;
   shadowMesh: THREE.Mesh;
+  pullMat: THREE.MeshBasicMaterial | null;
   x: number;
   z: number;
   age: number;
   swayPhase: number;
   baseScale: number;
+  shadowScaleX: number;
+  shadowScaleZ: number;
   hovered: boolean;
   pulling: boolean;
   pullProgress: number;
@@ -45,7 +52,9 @@ interface ActivePlant {
 }
 
 interface DirtHole {
+  active: boolean;
   mesh: THREE.Mesh;
+  material: THREE.MeshBasicMaterial;
   age: number;
   maxAge: number;
 }
@@ -263,20 +272,35 @@ export class MeadowScene {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
-  private clock = new THREE.Clock();
+  private envRenderTarget: THREE.WebGLRenderTarget | null = null;
   private raycaster = new THREE.Raycaster();
-  private textureLoader = new THREE.TextureLoader();
+  private loadingManager = new THREE.LoadingManager();
+  private textureLoader: THREE.TextureLoader;
 
   private textureCache = new Map<string, THREE.Texture>();
+  private settledSceneSprites = new Set<string>();
+  private onSceneSpriteSettled: (() => void) | null = null;
+  private plantGeoCache = new Map<string, { billboard: THREE.PlaneGeometry; hit: THREE.PlaneGeometry }>();
+  private plantStaticMatCache = new Map<string, THREE.MeshBasicMaterial>();
+  private pullMatPool: THREE.MeshBasicMaterial[] = [];
+  private sharedHitMaterial: THREE.MeshBasicMaterial;
+  private sharedPlantShadowMat: THREE.MeshBasicMaterial;
   private shadowTexture: THREE.CanvasTexture;
   private dirtHoleTexture: THREE.CanvasTexture;
   private shadowDiscGeo: THREE.PlaneGeometry;
   private dirtHoleGeo: THREE.PlaneGeometry;
 
+  // Shared sweat drop resources across all characters
+  private sweatTexture: THREE.CanvasTexture | null = null;
+  private sweatGeo: THREE.PlaneGeometry | null = null;
+  private sweatMat: THREE.MeshBasicMaterial | null = null;
+
   private plantsGroup = new THREE.Group();
   private holesGroup = new THREE.Group();
   private activePlants: ActivePlant[] = [];
-  private dirtHoles: DirtHole[] = [];
+  private dirtHolePool: DirtHole[] = [];
+  private readonly maxDirtHoles = 18;
+  private hitCandidates: THREE.Object3D[] = [];
   private nextPlantId = 1;
 
   private characters: CharacterActor[] = [];
@@ -297,6 +321,11 @@ export class MeadowScene {
   private lastReportedSecond = EXAM_DURATION_SECONDS;
   private currentAspect = 16 / 9;
 
+  // High-resolution monotonic timing (replaces deprecated THREE.Clock)
+  private lastFrameMs = 0;
+  private elapsedTime = 0;
+  private lastHoverRaycastMs = 0;
+
   // Camera smooth targets
   private cameraPosTarget = new THREE.Vector3(0, 7.6, 11.4);
   private cameraLookTarget = new THREE.Vector3(0, 1.0, -2.5);
@@ -304,14 +333,18 @@ export class MeadowScene {
   private cameraShake = 0;
 
   private frameId = 0;
+  private readySafetyTimer = 0;
+  private readyFired = false;
   private disposed = false;
   private resizeObserver: ResizeObserver;
   private maxAnisotropy = 1;
 
   constructor(container: HTMLElement, callbacks: MeadowSceneCallbacks) {
+    THREE.Cache.enabled = true;
     this.container = container;
     this.callbacksRef = { current: callbacks };
     this.isSoftwareGl = detectSoftwareGl();
+    this.textureLoader = new THREE.TextureLoader(this.loadingManager);
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: !this.isSoftwareGl,
@@ -350,7 +383,10 @@ export class MeadowScene {
 
     // Environment reflections
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const roomEnv = new RoomEnvironment();
+    this.envRenderTarget = pmrem.fromScene(roomEnv, 0.04);
+    this.scene.environment = this.envRenderTarget.texture;
+    roomEnv.dispose();
     pmrem.dispose();
 
     // Raycaster only intersects layer 1 (plant hit proxies)
@@ -363,6 +399,18 @@ export class MeadowScene {
     this.dirtHoleGeo = new THREE.PlaneGeometry(1.1, 0.85);
     this.dirtHoleGeo.rotateX(-Math.PI / 2);
 
+    this.sharedHitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+    this.sharedPlantShadowMat = new THREE.MeshBasicMaterial({
+      map: this.shadowTexture,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.36,
+    });
+
+    this.initPlantPools();
+    this.initDirtHolePool();
+    this.setupAssetPreloading();
+
     this.setupLighting();
     this.buildSkyAndHills();
     this.buildGround();
@@ -371,6 +419,11 @@ export class MeadowScene {
     this.buildCharacters();
     this.buildButterflies();
     this.buildParticleSystem();
+
+    // Kick off eager load for every scene sprite (all 3 characters + all 9 plants)
+    for (const spriteUrl of ALL_SCENE_SPRITES) {
+      this.getTexture(spriteUrl);
+    }
 
     this.scene.add(this.holesGroup);
     this.scene.add(this.plantsGroup);
@@ -386,7 +439,175 @@ export class MeadowScene {
       this.renderer.compile(this.scene, this.camera);
     }
 
+    // Continuous render loop starts in finishPreload() so loading animation and image decode
+    // never compete with hidden WebGL frames behind the opaque loading screen.
+  }
+
+  private initPlantPools() {
+    for (const def of PLANT_CATALOG) {
+      const billboard = new THREE.PlaneGeometry(def.worldWidth, def.worldHeight);
+      billboard.translate(0, def.worldHeight / 2, 0);
+      const hit = new THREE.PlaneGeometry(def.worldWidth * 1.22, def.worldHeight * 1.22);
+      hit.translate(0, def.worldHeight / 2, 0);
+      this.plantGeoCache.set(def.id, { billboard, hit });
+    }
+
+    // Reusable pulling materials pool (avoids creating/disposing materials during rapid weed pulls)
+    for (let i = 0; i < 16; i++) {
+      this.pullMatPool.push(
+        new THREE.MeshBasicMaterial({
+          transparent: true,
+          alphaTest: 0.08,
+          premultipliedAlpha: false,
+          side: THREE.DoubleSide,
+          toneMapped: false,
+          opacity: 1,
+        }),
+      );
+    }
+  }
+
+  private initDirtHolePool() {
+    for (let i = 0; i < this.maxDirtHoles; i++) {
+      const material = new THREE.MeshBasicMaterial({
+        map: this.dirtHoleTexture,
+        transparent: true,
+        depthWrite: false,
+        opacity: 0.9,
+      });
+      const mesh = new THREE.Mesh(this.dirtHoleGeo, material);
+      mesh.visible = false;
+      this.holesGroup.add(mesh);
+      this.dirtHolePool.push({
+        active: false,
+        mesh,
+        material,
+        age: 0,
+        maxAge: 0.95,
+      });
+    }
+  }
+
+  private setupAssetPreloading() {
+    const totalSceneCount = ALL_SCENE_SPRITES.length;
+    const totalUiCount = ALL_UI_SPRITES.length;
+    const totalItems = totalSceneCount + totalUiCount + 1; // +1 for web fonts
+    let sceneLoaded = 0;
+    let uiLoaded = 0;
+    let fontsLoaded = 0;
+    let sceneDone = false;
+    let uiDone = false;
+    let fontsDone = false;
+
+    const emitProgress = () => {
+      if (this.disposed) return;
+      const done = Math.min(totalItems, sceneLoaded + uiLoaded + fontsLoaded);
+      const pct = Math.round((done / totalItems) * 100);
+      this.callbacksRef.current.onLoadProgress?.(pct);
+    };
+
+    const tryComplete = () => {
+      if (this.disposed || this.readyFired) return;
+      if (!sceneDone || !uiDone || !fontsDone) return;
+      this.finishPreload();
+    };
+
+    const sceneSpriteSet = new Set<string>(ALL_SCENE_SPRITES);
+    this.onSceneSpriteSettled = () => {
+      let count = 0;
+      sceneSpriteSet.forEach((p) => {
+        if (this.settledSceneSprites.has(p)) count++;
+      });
+      sceneLoaded = count;
+      if (count >= totalSceneCount) {
+        sceneDone = true;
+      }
+      emitProgress();
+      tryComplete();
+    };
+
+    // Preload certificate UI sprites in browser image cache & decode them upfront
+    if (totalUiCount === 0) {
+      uiDone = true;
+    } else {
+      let remainingUi = totalUiCount;
+      const markUiOne = () => {
+        uiLoaded = Math.min(totalUiCount, uiLoaded + 1);
+        remainingUi--;
+        emitProgress();
+        if (remainingUi <= 0) {
+          uiDone = true;
+          tryComplete();
+        }
+      };
+      for (const src of ALL_UI_SPRITES) {
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => {
+          if (typeof img.decode === 'function') {
+            img.decode().catch(() => undefined).finally(markUiOne);
+          } else {
+            markUiOne();
+          }
+        };
+        img.onerror = markUiOne;
+        img.src = src;
+      }
+    }
+
+    // Wait for Google fonts (capped at 1200ms so offline/slow fonts never block startup)
+    const finishFonts = () => {
+      if (fontsDone) return;
+      fontsDone = true;
+      fontsLoaded = 1;
+      emitProgress();
+      tryComplete();
+    };
+    const fontFallback = window.setTimeout(finishFonts, 1200);
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+      document.fonts.ready
+        .then(() => {
+          window.clearTimeout(fontFallback);
+          finishFonts();
+        })
+        .catch(() => {
+          window.clearTimeout(fontFallback);
+          finishFonts();
+        });
+    } else {
+      window.clearTimeout(fontFallback);
+      finishFonts();
+    }
+
+    // Hard safety net: never stay stuck on loading screen longer than 15 seconds
+    this.readySafetyTimer = window.setTimeout(() => {
+      if (!this.readyFired && !this.disposed) {
+        this.finishPreload();
+      }
+    }, 15000);
+  }
+
+  private finishPreload() {
+    if (this.readyFired || this.disposed) return;
+    this.readyFired = true;
+    window.clearTimeout(this.readySafetyTimer);
+
+    // Pre-upload every loaded texture to GPU and paint a complete frame before revealing scene
+    if (!this.isSoftwareGl) {
+      this.textureCache.forEach((tex) => {
+        if (tex.image) {
+          this.renderer.initTexture(tex);
+        }
+      });
+      this.renderer.compile(this.scene, this.camera);
+    }
+
+    // Render the first complete frame (orienting all billboards + characters) and start the loop
+    this.lastFrameMs = performance.now();
     this.tick();
+
+    this.callbacksRef.current.onLoadProgress?.(100);
+    this.callbacksRef.current.onReady?.();
   }
 
   private setupLighting() {
@@ -494,6 +715,19 @@ export class MeadowScene {
       { x: 12.2, z: -9.0, scale: 1.24 },
     ];
 
+    const treeShadowMat = new THREE.MeshBasicMaterial({
+      map: this.shadowTexture,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.45,
+    });
+    const bushShadowMat = new THREE.MeshBasicMaterial({
+      map: this.shadowTexture,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.35,
+    });
+
     for (const tp of treePositions) {
       const tree = new THREE.Group();
       tree.position.set(tp.x, 0, tp.z);
@@ -527,16 +761,8 @@ export class MeadowScene {
         tree.add(outline);
       }
 
-      // Ground contact shadow
-      const shadow = new THREE.Mesh(
-        this.shadowDiscGeo,
-        new THREE.MeshBasicMaterial({
-          map: this.shadowTexture,
-          transparent: true,
-          depthWrite: false,
-          opacity: 0.45,
-        }),
-      );
+      // Ground contact shadow (shared material)
+      const shadow = new THREE.Mesh(this.shadowDiscGeo, treeShadowMat);
       shadow.position.y = 0.015;
       shadow.scale.set(4.2, 1, 2.6);
       tree.add(shadow);
@@ -574,15 +800,7 @@ export class MeadowScene {
       outline.scale.set(1.09, 0.8, 0.96);
       bush.add(outline);
 
-      const shadow = new THREE.Mesh(
-        this.shadowDiscGeo,
-        new THREE.MeshBasicMaterial({
-          map: this.shadowTexture,
-          transparent: true,
-          depthWrite: false,
-          opacity: 0.35,
-        }),
-      );
+      const shadow = new THREE.Mesh(this.shadowDiscGeo, bushShadowMat);
       shadow.position.y = 0.015;
       shadow.scale.set(2.4, 1, 1.6);
       bush.add(shadow);
@@ -610,6 +828,7 @@ export class MeadowScene {
     const postGeo = new THREE.BoxGeometry(0.24, 1.05, 0.24);
     const capGeo = new THREE.ConeGeometry(0.18, 0.18, 4);
     capGeo.rotateY(Math.PI / 4);
+    const railGeoCache = new Map<string, THREE.BoxGeometry>();
 
     const fenceGroup = new THREE.Group();
 
@@ -646,7 +865,12 @@ export class MeadowScene {
       const dz = z2 - z1;
       const len = Math.hypot(dx, dz);
       const angle = Math.atan2(dx, dz);
-      const railGeo = new THREE.BoxGeometry(0.09, 0.11, len);
+      const key = len.toFixed(2);
+      let railGeo = railGeoCache.get(key);
+      if (!railGeo) {
+        railGeo = new THREE.BoxGeometry(0.09, 0.11, len);
+        railGeoCache.set(key, railGeo);
+      }
 
       for (const ry of [0.36, 0.74]) {
         const rail = new THREE.Mesh(railGeo, woodMat);
@@ -689,7 +913,12 @@ export class MeadowScene {
   private getTexture(path: string): THREE.Texture {
     const cached = this.textureCache.get(path);
     if (cached) return cached;
-    const tex = this.textureLoader.load(path);
+    const settle = () => {
+      if (this.disposed) return;
+      this.settledSceneSprites.add(path);
+      this.onSceneSpriteSettled?.();
+    };
+    const tex = this.textureLoader.load(path, settle, undefined, settle);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.maxAnisotropy;
     this.textureCache.set(path, tex);
@@ -697,32 +926,34 @@ export class MeadowScene {
   }
 
   private createSweatIndicator(): THREE.Group {
-    const group = new THREE.Group();
-    const dropCanvas = document.createElement('canvas');
-    dropCanvas.width = 64;
-    dropCanvas.height = 64;
-    const ctx = dropCanvas.getContext('2d')!;
-    // Comic blue sweat drop + exclamation mark
-    ctx.fillStyle = '#7bd3ff';
-    ctx.strokeStyle = '#2d2926';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(32, 8);
-    ctx.quadraticCurveTo(50, 34, 46, 46);
-    ctx.arc(32, 44, 14, 0, Math.PI);
-    ctx.quadraticCurveTo(14, 34, 32, 8);
-    ctx.fill();
-    ctx.stroke();
+    if (!this.sweatTexture || !this.sweatGeo || !this.sweatMat) {
+      const dropCanvas = document.createElement('canvas');
+      dropCanvas.width = 64;
+      dropCanvas.height = 64;
+      const ctx = dropCanvas.getContext('2d')!;
+      ctx.fillStyle = '#7bd3ff';
+      ctx.strokeStyle = '#2d2926';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(32, 8);
+      ctx.quadraticCurveTo(50, 34, 46, 46);
+      ctx.arc(32, 44, 14, 0, Math.PI);
+      ctx.quadraticCurveTo(14, 34, 32, 8);
+      ctx.fill();
+      ctx.stroke();
 
-    const tex = new THREE.CanvasTexture(dropCanvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex,
-      transparent: true,
-      depthWrite: false,
-    });
-    const geo = new THREE.PlaneGeometry(0.42, 0.42);
-    const mesh = new THREE.Mesh(geo, mat);
+      this.sweatTexture = new THREE.CanvasTexture(dropCanvas);
+      this.sweatTexture.colorSpace = THREE.SRGBColorSpace;
+      this.sweatMat = new THREE.MeshBasicMaterial({
+        map: this.sweatTexture,
+        transparent: true,
+        depthWrite: false,
+      });
+      this.sweatGeo = new THREE.PlaneGeometry(0.42, 0.42);
+    }
+
+    const group = new THREE.Group();
+    const mesh = new THREE.Mesh(this.sweatGeo, this.sweatMat);
     mesh.position.set(0.65, 1.55, 0.05);
     group.add(mesh);
     group.visible = false;
@@ -731,6 +962,12 @@ export class MeadowScene {
 
   private buildCharacters() {
     // Cropped sprites from user's uploaded images, rendered as 2D billboards in the 3D scene!
+    const charShadowMat = new THREE.MeshBasicMaterial({
+      map: this.shadowTexture,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.42,
+    });
     const specs: Array<{
       id: 'usagi' | 'chiikawa' | 'hachiware';
       sprite: string;
@@ -788,15 +1025,7 @@ export class MeadowScene {
       billboard.renderOrder = 4;
       group.add(billboard);
 
-      const shadow = new THREE.Mesh(
-        this.shadowDiscGeo,
-        new THREE.MeshBasicMaterial({
-          map: this.shadowTexture,
-          transparent: true,
-          depthWrite: false,
-          opacity: 0.42,
-        }),
-      );
+      const shadow = new THREE.Mesh(this.shadowDiscGeo, charShadowMat);
       shadow.position.y = 0.015;
       shadow.scale.set(c.width * 1.05, 1, c.width * 0.65);
       group.add(shadow);
@@ -831,6 +1060,9 @@ export class MeadowScene {
     const wingGeo = new THREE.ShapeGeometry(wingShape, 8);
     wingGeo.rotateX(-Math.PI / 2);
 
+    const bodyGeo = new THREE.CapsuleGeometry(0.025, 0.12, 4, 6);
+    const bodyMat = new THREE.MeshBasicMaterial({ color: 0x3b332c });
+
     const configs = [
       { color: 0xffd94a, cx: -2.2, cz: 0.3, rx: 2.5, rz: 1.6, by: 1.35, speed: 0.85, phase: 0 },
       { color: 0x7fd4ff, cx: 1.8, cz: -0.6, rx: 2.4, rz: 1.9, by: 1.45, speed: 0.72, phase: 2.1 },
@@ -848,10 +1080,7 @@ export class MeadowScene {
       leftWing.scale.x = -1;
       const rightWing = new THREE.Mesh(wingGeo, wingMat);
 
-      const body = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.025, 0.12, 4, 6),
-        new THREE.MeshBasicMaterial({ color: 0x3b332c }),
-      );
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
       body.rotation.x = Math.PI / 2;
 
       group.add(leftWing, rightWing, body);
@@ -962,22 +1191,56 @@ export class MeadowScene {
     }
   }
 
+  private getPlantStaticMaterial(def: PlantDefinition): THREE.MeshBasicMaterial {
+    const cached = this.plantStaticMatCache.get(def.id);
+    if (cached) return cached;
+    const mat = new THREE.MeshBasicMaterial({
+      map: this.getTexture(def.sprite),
+      transparent: true,
+      alphaTest: 0.08,
+      premultipliedAlpha: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    this.plantStaticMatCache.set(def.id, mat);
+    return mat;
+  }
+
+  private acquirePullMaterial(def: PlantDefinition): THREE.MeshBasicMaterial {
+    const tex = this.getTexture(def.sprite);
+    const mat =
+      this.pullMatPool.pop() ??
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        alphaTest: 0.08,
+        premultipliedAlpha: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+    mat.map = tex;
+    mat.opacity = 1;
+    return mat;
+  }
+
+  private releasePlant(p: ActivePlant) {
+    this.plantsGroup.remove(p.group);
+    if (p.pullMat) {
+      p.pullMat.opacity = 1;
+      this.pullMatPool.push(p.pullMat);
+      p.pullMat = null;
+    }
+  }
+
   private clearPlants() {
     for (const p of this.activePlants) {
-      this.plantsGroup.remove(p.group);
-      (p.billboard.material as THREE.Material).dispose();
-      p.billboard.geometry.dispose();
-      p.hitMesh.geometry.dispose();
-      (p.hitMesh.material as THREE.Material).dispose();
-      (p.shadowMesh.material as THREE.Material).dispose();
+      this.releasePlant(p);
     }
-    this.activePlants = [];
+    this.activePlants.length = 0;
 
-    for (const h of this.dirtHoles) {
-      this.holesGroup.remove(h.mesh);
-      (h.mesh.material as THREE.Material).dispose();
+    for (const h of this.dirtHolePool) {
+      h.active = false;
+      h.mesh.visible = false;
     }
-    this.dirtHoles = [];
   }
 
   private spawnPlant(def: PlantDefinition, x: number, z: number, ttl = 14, countWeed = true) {
@@ -987,42 +1250,25 @@ export class MeadowScene {
     const group = new THREE.Group();
     group.position.set(x, 0, z);
 
-    const tex = this.getTexture(def.sprite);
-    const geo = new THREE.PlaneGeometry(def.worldWidth, def.worldHeight);
-    geo.translate(0, def.worldHeight / 2, 0);
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex,
-      transparent: true,
-      alphaTest: 0.08,
-      premultipliedAlpha: false,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
-    const billboard = new THREE.Mesh(geo, mat);
+    const geos = this.plantGeoCache.get(def.id);
+    if (!geos) return;
+
+    const billboard = new THREE.Mesh(geos.billboard, this.getPlantStaticMaterial(def));
     billboard.renderOrder = 3;
     group.add(billboard);
 
-    // Forgiving invisible hit proxy on layer 1
-    const hitGeo = new THREE.PlaneGeometry(def.worldWidth * 1.22, def.worldHeight * 1.22);
-    hitGeo.translate(0, def.worldHeight / 2, 0);
-    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
-    const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+    // Forgiving invisible hit proxy on layer 1 (shared geometry + shared material)
+    const hitMesh = new THREE.Mesh(geos.hit, this.sharedHitMaterial);
     hitMesh.layers.set(1);
     const id = this.nextPlantId++;
     hitMesh.userData.plantId = id;
     group.add(hitMesh);
 
-    const shadowMesh = new THREE.Mesh(
-      this.shadowDiscGeo,
-      new THREE.MeshBasicMaterial({
-        map: this.shadowTexture,
-        transparent: true,
-        depthWrite: false,
-        opacity: 0.36,
-      }),
-    );
+    const shadowScaleX = def.worldWidth * 0.92;
+    const shadowScaleZ = def.worldWidth * 0.55;
+    const shadowMesh = new THREE.Mesh(this.shadowDiscGeo, this.sharedPlantShadowMat);
     shadowMesh.position.y = 0.014;
-    shadowMesh.scale.set(def.worldWidth * 0.92, 1, def.worldWidth * 0.55);
+    shadowMesh.scale.set(shadowScaleX, 1, shadowScaleZ);
     group.add(shadowMesh);
 
     const baseScale = 0.92 + Math.random() * 0.16;
@@ -1036,11 +1282,14 @@ export class MeadowScene {
       billboard,
       hitMesh,
       shadowMesh,
+      pullMat: null,
       x,
       z,
       age: 0,
       swayPhase: Math.random() * Math.PI * 2,
       baseScale,
+      shadowScaleX,
+      shadowScaleZ,
       hovered: false,
       pulling: false,
       pullProgress: 0,
@@ -1050,17 +1299,27 @@ export class MeadowScene {
   }
 
   private spawnDirtHole(x: number, z: number) {
-    const mat = new THREE.MeshBasicMaterial({
-      map: this.dirtHoleTexture,
-      transparent: true,
-      depthWrite: false,
-      opacity: 0.9,
-    });
-    const mesh = new THREE.Mesh(this.dirtHoleGeo, mat);
-    mesh.position.set(x, 0.016, z);
-    mesh.rotation.y = (Math.random() - 0.5) * 0.5;
-    this.holesGroup.add(mesh);
-    this.dirtHoles.push({ mesh, age: 0, maxAge: 0.95 });
+    let slot: DirtHole | null = null;
+    for (let i = 0; i < this.dirtHolePool.length; i++) {
+      if (!this.dirtHolePool[i].active) {
+        slot = this.dirtHolePool[i];
+        break;
+      }
+    }
+    if (!slot) {
+      // Recycle oldest active dirt hole if pool is saturated
+      slot = this.dirtHolePool[0];
+      for (let i = 1; i < this.dirtHolePool.length; i++) {
+        if (this.dirtHolePool[i].age > slot.age) slot = this.dirtHolePool[i];
+      }
+    }
+    slot.active = true;
+    slot.age = 0;
+    slot.maxAge = 0.95;
+    slot.material.opacity = 0.9;
+    slot.mesh.position.set(x, 0.016, z);
+    slot.mesh.rotation.y = (Math.random() - 0.5) * 0.5;
+    slot.mesh.visible = true;
   }
 
   private computeResponsiveFov(aspect: number): number {
@@ -1135,7 +1394,7 @@ export class MeadowScene {
     const wasPaused = this.modalPaused;
     this.modalPaused = open;
     if (wasPaused && !open && !this.disposed) {
-      this.clock.getDelta();
+      this.lastFrameMs = performance.now();
       this.tick();
     }
   }
@@ -1153,8 +1412,7 @@ export class MeadowScene {
     const bounds = this.getSpawnBounds();
     const minDist = this.currentAspect < 0.75 ? 1.55 : 1.45;
     for (let i = 0; i < 10; i++) {
-      const existing = this.activePlants.map((p) => ({ x: p.x, z: p.z }));
-      const pos = findOpenSpawnPosition(existing, bounds, minDist);
+      const pos = findOpenSpawnPosition(this.activePlants, bounds, minDist);
       if (!pos) break;
       const isInitialWeed = i % 2 === 0;
       const def = pickRandomPlant(isInitialWeed ? 1.0 : 0.0);
@@ -1179,17 +1437,27 @@ export class MeadowScene {
     _pointerNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   }
 
+  private fillHitCandidates() {
+    this.hitCandidates.length = 0;
+    for (let i = 0; i < this.activePlants.length; i++) {
+      const p = this.activePlants[i];
+      if (!p.pulling) this.hitCandidates.push(p.hitMesh);
+    }
+  }
+
   private onPointerMove = (e: PointerEvent) => {
-    if (this.currentScreen !== 'playing') return;
+    if (this.currentScreen !== 'playing' || e.pointerType === 'touch') return;
+    const now = performance.now();
+    if (now - this.lastHoverRaycastMs < 32) return;
+    this.lastHoverRaycastMs = now;
+
     this.updatePointerNdc(e);
     this.raycaster.setFromCamera(_pointerNdc, this.camera);
-    const hits = this.raycaster.intersectObjects(
-      this.activePlants.filter((p) => !p.pulling).map((p) => p.hitMesh),
-      false,
-    );
+    this.fillHitCandidates();
+    const hits = this.raycaster.intersectObjects(this.hitCandidates, false);
     const hitId = hits.length > 0 ? hits[0].object.userData.plantId : null;
-    for (const p of this.activePlants) {
-      p.hovered = p.id === hitId;
+    for (let i = 0; i < this.activePlants.length; i++) {
+      this.activePlants[i].hovered = this.activePlants[i].id === hitId;
     }
     this.renderer.domElement.style.cursor = hitId ? 'pointer' : 'default';
   };
@@ -1198,16 +1466,25 @@ export class MeadowScene {
     if (this.currentScreen !== 'playing') return;
     this.updatePointerNdc(e);
     this.raycaster.setFromCamera(_pointerNdc, this.camera);
-    const candidates = this.activePlants.filter((p) => !p.pulling).map((p) => p.hitMesh);
-    const hits = this.raycaster.intersectObjects(candidates, false);
+    this.fillHitCandidates();
+    const hits = this.raycaster.intersectObjects(this.hitCandidates, false);
     if (hits.length === 0) return;
 
     const hitId = hits[0].object.userData.plantId;
-    const plant = this.activePlants.find((p) => p.id === hitId && !p.pulling);
+    let plant: ActivePlant | undefined;
+    for (let i = 0; i < this.activePlants.length; i++) {
+      const candidate = this.activePlants[i];
+      if (candidate.id === hitId && !candidate.pulling) {
+        plant = candidate;
+        break;
+      }
+    }
     if (!plant) return;
 
     plant.pulling = true;
     plant.pullProgress = 0;
+    plant.pullMat = this.acquirePullMaterial(plant.def);
+    plant.billboard.material = plant.pullMat;
 
     // Project plant top position to screen coordinates for crisp floating +1/-1 feedback
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -1303,9 +1580,8 @@ export class MeadowScene {
         const maxFieldSlots = needWeed ? Math.max(budget.targetCount, 13) : budget.targetCount;
 
         if (aliveCount < maxFieldSlots && this.spawnCooldown <= 0) {
-          const existing = this.activePlants.map((p) => ({ x: p.x, z: p.z }));
           const minDist = this.currentAspect < 0.75 ? 1.55 : 1.45;
-          const pos = findOpenSpawnPosition(existing, this.getSpawnBounds(), minDist);
+          const pos = findOpenSpawnPosition(this.activePlants, this.getSpawnBounds(), minDist);
           if (pos) {
             const mustSpawnWeed = needWeed || activeProtected >= budget.maxProtectedActive;
             const mustSpawnProtected =
@@ -1345,23 +1621,19 @@ export class MeadowScene {
             p.baseScale,
           );
           p.billboard.rotation.z = p.pullDir * t * 0.28;
-          (p.billboard.material as THREE.MeshBasicMaterial).opacity = 1 - t * t;
-          (p.shadowMesh.material as THREE.MeshBasicMaterial).opacity = 0.36 * (1 - t);
+          if (p.pullMat) p.pullMat.opacity = 1 - t * t;
+          const sh = Math.max(0.001, 1 - t);
+          p.shadowMesh.scale.set(p.shadowScaleX * sh, 1, p.shadowScaleZ * sh);
         } else {
           // Protected plant mistake tremor + shrink
           p.billboard.position.x = Math.sin(t * 36) * 0.16 * (1 - t);
           const s = p.baseScale * (1 - t * 0.85);
           p.group.scale.set(s, s, s);
-          (p.billboard.material as THREE.MeshBasicMaterial).opacity = 1 - t;
+          if (p.pullMat) p.pullMat.opacity = 1 - t;
         }
 
         if (t >= 1) {
-          this.plantsGroup.remove(p.group);
-          (p.billboard.material as THREE.Material).dispose();
-          p.billboard.geometry.dispose();
-          p.hitMesh.geometry.dispose();
-          (p.hitMesh.material as THREE.Material).dispose();
-          (p.shadowMesh.material as THREE.Material).dispose();
+          this.releasePlant(p);
           this.activePlants.splice(i, 1);
           continue;
         }
@@ -1372,12 +1644,7 @@ export class MeadowScene {
           const s = p.baseScale * (1 - fadeOut);
           p.group.scale.set(s, s, s);
           if (fadeOut >= 1) {
-            this.plantsGroup.remove(p.group);
-            (p.billboard.material as THREE.Material).dispose();
-            p.billboard.geometry.dispose();
-            p.hitMesh.geometry.dispose();
-            (p.hitMesh.material as THREE.Material).dispose();
-            (p.shadowMesh.material as THREE.Material).dispose();
+            this.releasePlant(p);
             this.activePlants.splice(i, 1);
             continue;
           }
@@ -1396,16 +1663,17 @@ export class MeadowScene {
       }
     }
 
-    // Update dirt holes
-    for (let i = this.dirtHoles.length - 1; i >= 0; i--) {
-      const h = this.dirtHoles[i];
+    // Update pooled dirt holes
+    for (let i = 0; i < this.dirtHolePool.length; i++) {
+      const h = this.dirtHolePool[i];
+      if (!h.active) continue;
       h.age += dt;
       const t = h.age / h.maxAge;
-      (h.mesh.material as THREE.MeshBasicMaterial).opacity = 0.88 * (1 - t);
       if (t >= 1) {
-        this.holesGroup.remove(h.mesh);
-        (h.mesh.material as THREE.Material).dispose();
-        this.dirtHoles.splice(i, 1);
+        h.active = false;
+        h.mesh.visible = false;
+      } else {
+        h.material.opacity = 0.88 * (1 - t);
       }
     }
 
@@ -1526,13 +1794,15 @@ export class MeadowScene {
 
   private tick = () => {
     if (this.disposed || this.modalPaused) return;
-    const rawDt = this.clock.getDelta();
+    const now = performance.now();
+    const rawDt = Math.max(0, (now - this.lastFrameMs) / 1000);
+    this.lastFrameMs = now;
     const dt = Math.min(rawDt, 0.05);
     const timerDt = Math.min(rawDt, 1.0);
-    const elapsed = this.clock.elapsedTime;
+    this.elapsedTime += dt;
 
     if (this.currentScreen !== 'paused') {
-      this.updateSimulation(dt, timerDt, elapsed);
+      this.updateSimulation(dt, timerDt, this.elapsedTime);
     } else {
       // Keep camera smoothly settled even while paused
       this.camera.lookAt(this.cameraLookCurrent);
@@ -1551,6 +1821,7 @@ export class MeadowScene {
     this.disposed = true;
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
+    clearTimeout(this.readySafetyTimer);
     this.resizeObserver.disconnect();
 
     const canvas = this.renderer.domElement;
@@ -1559,14 +1830,56 @@ export class MeadowScene {
     canvas.removeEventListener('webglcontextlost', this.onContextLost);
 
     this.clearPlants();
+
+    // Dispose all shared caches and pools
+    this.plantGeoCache.forEach(({ billboard, hit }) => {
+      billboard.dispose();
+      hit.dispose();
+    });
+    this.plantGeoCache.clear();
+    this.plantStaticMatCache.forEach((m) => m.dispose());
+    this.plantStaticMatCache.clear();
+    for (const m of this.pullMatPool) m.dispose();
+    this.pullMatPool.length = 0;
+    for (const h of this.dirtHolePool) h.material.dispose();
+    this.dirtHolePool.length = 0;
+
+    this.sharedHitMaterial.dispose();
+    this.sharedPlantShadowMat.dispose();
+    this.sweatTexture?.dispose();
+    this.sweatGeo?.dispose();
+    this.sweatMat?.dispose();
+
+    // Dispose remaining static scene geometries, materials, and maps
+    const disposedGeos = new Set<THREE.BufferGeometry>();
+    const disposedMats = new Set<THREE.Material>();
+    this.scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        if (obj.geometry && !disposedGeos.has(obj.geometry)) {
+          disposedGeos.add(obj.geometry);
+          obj.geometry.dispose();
+        }
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) {
+          if (mat && !disposedMats.has(mat)) {
+            disposedMats.add(mat);
+            if ('map' in mat && mat.map instanceof THREE.Texture) {
+              mat.map.dispose();
+            }
+            mat.dispose();
+          }
+        }
+      }
+    });
+
     this.textureCache.forEach((tex) => tex.dispose());
     this.textureCache.clear();
     this.shadowTexture.dispose();
     this.dirtHoleTexture.dispose();
     this.shadowDiscGeo.dispose();
     this.dirtHoleGeo.dispose();
-    this.particleMesh.geometry.dispose();
-    (this.particleMesh.material as THREE.Material).dispose();
+    this.envRenderTarget?.dispose();
+    this.envRenderTarget = null;
 
     this.renderer.dispose();
     if (canvas.parentElement === this.container) {
