@@ -412,31 +412,31 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
           <button
             type="button"
             onClick={onOpenStudy}
-            className="game-btn font-hand flex items-center gap-1.5 rounded-full bg-[#b4dc9c] px-3.5 py-1 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-4 sm:py-1.5 sm:text-xl"
+            className="game-btn font-hand flex items-center gap-1.5 rounded-full bg-[#c9ebb2] px-4 py-1.5 text-lg font-bold text-[#3c332c] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-1.5 sm:text-xl"
           >
-            <BookOpen className="h-4 w-4" strokeWidth={2.5} />
+            <BookOpen className="h-4 w-4 text-[#438e3f]" strokeWidth={2.5} />
             <span>제초 공부</span>
           </button>
         </div>
 
-        {/* Row 2: 자격증 저장, 랭킹표, 다시 도전 buttons */}
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-2.5 sm:mt-3.5 sm:gap-3">
+        {/* Row 2: Puffy anime action cluster (Secondary utilities + Hero Retry CTA) */}
+        <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2.5 sm:mt-4 sm:gap-3">
           <button
             type="button"
             onClick={handleDownloadCertificate}
             disabled={saving}
-            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fbf9f1] px-4 py-2 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-2.5 sm:text-xl"
+            className="game-btn font-hand flex items-center gap-1.5 rounded-full bg-[#ffeef3] px-4 py-2 text-lg font-bold text-[#3c332c] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-2.5 sm:text-xl"
           >
-            <Download className="h-4 w-4" strokeWidth={2.5} />
+            <Download className="h-4 w-4 text-[#d65b7d]" strokeWidth={2.5} />
             <span>{saving ? '저장 중...' : '자격증 저장'}</span>
           </button>
 
           <button
             type="button"
             onClick={onOpenRanking}
-            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fbf9f1] px-4 py-2 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-2.5 sm:text-xl"
+            className="game-btn font-hand flex items-center gap-1.5 rounded-full bg-[#d9eefb] px-4 py-2 text-lg font-bold text-[#3c332c] whitespace-nowrap sm:gap-2 sm:px-5 sm:py-2.5 sm:text-xl"
           >
-            <Trophy className="h-4 w-4 text-[#e09f1f]" strokeWidth={2.5} />
+            <Trophy className="h-4 w-4 text-[#e09a1e]" strokeWidth={2.5} />
             <span>랭킹표</span>
           </button>
 
@@ -444,9 +444,9 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             type="button"
             data-start="true"
             onClick={onRetry}
-            className="game-btn font-hand flex items-center gap-1.5 rounded-2xl bg-[#fdd64c] px-5 py-2 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:gap-2 sm:px-6 sm:py-2.5 sm:text-xl"
+            className="chiikawa-hero-btn font-display flex items-center gap-2 rounded-full bg-[#ffe066] px-6 py-2.5 text-xl text-[#3c332c] whitespace-nowrap sm:gap-2.5 sm:px-8 sm:py-3 sm:text-2xl"
           >
-            <RotateCcw className="h-4 w-4" strokeWidth={2.5} />
+            <RotateCcw className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.6} />
             <span>다시 도전</span>
           </button>
         </div>

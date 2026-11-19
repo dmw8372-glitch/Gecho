@@ -42,12 +42,12 @@ export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
 
   return (
     <div className="pointer-events-none fixed inset-0 z-10 flex flex-col justify-between px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-4 sm:p-6">
-      {/* Top HUD Bar matching IMG_1423–1425, compact on mobile */}
+      {/* Top HUD Bar styled with soft Chiikawa anime mochi capsules */}
       <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2">
-        {/* Top-left: Weed count + Grade or Ranking player pill */}
+        {/* Top-left: Weed count + Grade or Ranking player badge */}
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5">
           <div
-            className="game-pill flex items-center gap-1.5 rounded-full px-3 py-1 sm:gap-2.5 sm:px-4 sm:py-1.5"
+            className="game-pill flex items-center gap-1.5 rounded-full bg-[#fffdf6] px-3 py-1 sm:gap-2.5 sm:px-4 sm:py-1.5"
             aria-label={`뽑은 잡초 ${score}개`}
           >
             <img
@@ -58,7 +58,7 @@ export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
             />
             <span
               data-testid="hud-score"
-              className="font-hand tabular-nums text-xl font-bold text-[#342f2a] sm:text-2xl"
+              className="font-hand tabular-nums text-xl font-bold text-[#3c332c] sm:text-2xl"
             >
               {score}
             </span>
@@ -67,7 +67,7 @@ export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
           {mode === 'ranking' ? (
             <div
               data-testid="hud-mode-badge"
-              className="game-pill font-hand flex max-w-[130px] items-center gap-1 rounded-xl bg-[#fff4c2] px-2.5 py-0.5 text-sm font-bold text-[#342f2a] sm:max-w-[180px] sm:px-3 sm:py-1 sm:text-base"
+              className="game-pill font-hand flex max-w-[130px] items-center gap-1 rounded-full bg-[#d9eefb] px-3 py-0.5 text-sm font-bold text-[#3c332c] sm:max-w-[180px] sm:px-3.5 sm:py-1 sm:text-base"
             >
               <Trophy className="h-3.5 w-3.5 shrink-0 text-[#d99114]" strokeWidth={2.5} />
               <span className="truncate">{playerName || '랭킹전'}</span>
@@ -75,23 +75,23 @@ export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
           ) : (
             <div
               data-testid="hud-grade"
-              className="game-pill font-hand rounded-xl px-2.5 py-0.5 text-base font-bold text-[#342f2a] sm:px-3 sm:py-1 sm:text-lg"
-              style={{ transform: 'rotate(-4deg)' }}
+              className="game-pill font-hand rounded-full bg-[#ffeef3] px-3 py-0.5 text-base font-bold text-[#3c332c] sm:px-3.5 sm:py-1 sm:text-lg"
+              style={{ transform: 'rotate(-3deg)' }}
             >
               {grade}급
             </div>
           )}
 
           {combo >= 2 && (
-            <div className="font-display rounded-full border-2 border-[#342f2a] bg-[#fdd64c] px-2 py-0.5 text-xs font-bold text-[#342f2a] sm:px-2.5 sm:text-sm">
+            <div className="font-display rounded-full border-2 border-[#3c332c] bg-[#ffe066] px-2.5 py-0.5 text-xs font-bold text-[#3c332c] shadow-[0_2px_0_#3c332c] sm:px-3 sm:text-sm">
               x{combo}
             </div>
           )}
         </div>
 
-        {/* Top-center: Circular countdown timer matching IMG_1423–1425 */}
+        {/* Top-center: Puffy cream circular countdown timer */}
         <div
-          className="relative flex h-[56px] w-[56px] items-center justify-center rounded-full border-[2.5px] border-[#342f2a] bg-[#fbf9f1] shadow-sm sm:h-[68px] sm:w-[68px]"
+          className="relative flex h-[58px] w-[58px] items-center justify-center rounded-full border-[3px] border-[#3c332c] bg-[#fffdf6] shadow-[inset_0_3px_0_rgba(255,255,255,0.8),0_4px_0_rgba(60,51,44,0.2)] sm:h-[70px] sm:w-[70px]"
           aria-label={`남은 시간 ${displaySeconds}초`}
         >
           <svg className="h-[48px] w-[48px] -rotate-90 sm:h-[60px] sm:w-[60px]" viewBox="0 0 64 64">
@@ -100,7 +100,7 @@ export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
               cy="32"
               r={radius}
               fill="none"
-              stroke="#e5e0cf"
+              stroke="#ede7d6"
               strokeWidth="5.5"
             />
             <circle
@@ -108,7 +108,7 @@ export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
               cy="32"
               r={radius}
               fill="none"
-              stroke={isUrgent ? '#e25b5b' : '#58a855'}
+              stroke={isUrgent ? '#ec6a78' : '#65b862'}
               strokeWidth="5.5"
               strokeLinecap="round"
               strokeDasharray={circumference}
@@ -119,14 +119,14 @@ export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
           <span
             data-testid="hud-timer"
             className={`font-hand tabular-nums absolute text-xl font-bold sm:text-2xl ${
-              isUrgent ? 'text-[#c94141]' : 'text-[#342f2a]'
+              isUrgent ? 'text-[#d44454]' : 'text-[#3c332c]'
             }`}
           >
             {displaySeconds}
           </span>
         </div>
 
-        {/* Top-right: Pause button */}
+        {/* Top-right: Puffy Pause button */}
         <div className="flex justify-end">
           <button
             type="button"
@@ -136,7 +136,7 @@ export const PlayingHud: React.FC<PlayingHudProps> = React.memo(({
             }}
             tabIndex={-1}
             aria-label="일시정지"
-            className="game-btn pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#fbf9f1] text-[#342f2a] sm:h-11 sm:w-11"
+            className="game-btn pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-[#fffdf6] text-[#3c332c] sm:h-12 sm:w-12"
           >
             <Pause className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.6} />
           </button>

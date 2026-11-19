@@ -128,7 +128,7 @@ export const RankingModal: React.FC<RankingModalProps> = ({
               <button
                 type="submit"
                 data-testid="ranking-start-btn"
-                className="game-btn font-hand shrink-0 rounded-xl bg-[#fdd64c] px-4 py-2 text-lg font-bold text-[#342f2a] whitespace-nowrap sm:text-xl"
+                className="game-btn font-display shrink-0 rounded-full bg-[#ffe066] px-5 py-2 text-lg text-[#3c332c] whitespace-nowrap sm:text-xl"
               >
                 30초 도전 시작 →
               </button>
